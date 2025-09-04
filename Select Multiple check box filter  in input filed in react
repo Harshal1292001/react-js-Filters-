@@ -1,0 +1,68 @@
+const [selectedLabourCategories, setSelectedLabourCategories] = useState([]);
+
+const uniqueLabourCategories = useMemo(() => {
+  const categories = Array.isArray(labourRequisitions)
+    ? labourRequisitions.map((labour) => labour.Labour_Category).filter(Boolean)
+    : [];
+  return [...new Set(categories)].sort();
+}, [labourRequisitions]);
+
+
+const handleLabourCategoryChange = (category) => {
+  setSelectedLabourCategories((prev) =>
+    prev.includes(category)
+      ? prev.filter((cat) => cat !== category)
+      : [...prev, category]
+  );
+};
+
+const matchesLabourCategory =
+  selectedLabourCategories.length === 0 ||
+  selectedLabourCategories.includes(labour.Labour_Category);
+
+
+
+<div className="col-md-2">
+  <label htmlFor="labour-category" className="form-label fw-bold">
+    Labour Category
+  </label>
+  <div className="dropdown">
+    <button
+      className="btn btn-outline-secondary dropdown-toggle w-100"
+      type="button"
+      id="labourCategoryDropdown"
+      data-bs-toggle="dropdown"
+      aria-expanded="false"
+    >
+      {selectedLabourCategories.length > 0
+        ? `${selectedLabourCategories.length} selected`
+        : "Select Labour Categories"}
+    </button>
+    <ul
+      className="dropdown-menu"
+      style={{ maxHeight: "200px", overflowY: "auto" }}
+      aria-labelledby="labourCategoryDropdown"
+    >
+      {uniqueLabourCategories.map((category) => (
+        <li key={category}>
+          <div className="form-check px-3">
+            <input
+              className="form-check-input"
+              type="checkbox"
+              value={category}
+              checked={selectedLabourCategories.includes(category)}
+              onChange={() => handleLabourCategoryChange(category)}
+              id={`category-${category}`}
+            />
+            <label
+              className="form-check-label"
+              htmlFor={`category-${category}`}
+            >
+              {category}
+            </label>
+          </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+</div>
