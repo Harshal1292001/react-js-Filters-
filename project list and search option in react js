@@ -1,0 +1,221 @@
+// Import statements (relevant ones)
+import React, { useState, useMemo } from "react";
+
+// Inside the LabourRequisitionBrowse function component
+
+// State for selected project (searchTerm) and dropdown search input (projectSearch)
+const [searchTerm, setSearchTerm] = useState("");
+const [projectSearch, setProjectSearch] = useState("");
+
+// Compute unique projects from labourRequisitions data
+const uniqueProjects = useMemo(() => {
+  const projects = Array.isArray(labourRequisitions)
+    ? labourRequisitions.map((proj) => proj.Projnm).filter(Boolean)
+    : [];
+  return [...new Set(projects)].sort();
+}, [labourRequisitions]);
+
+// Filter projects based on the dropdown search input (projectSearch)
+const filteredProjects = useMemo(() => {
+  return uniqueProjects.filter((project) =>
+    project.toLowerCase().includes(projectSearch.toLowerCase())
+  );
+}, [uniqueProjects, projectSearch]);
+
+// In the return JSX, inside the filter section row
+<div className="col-md-2">
+  <label htmlFor="project-search" className="form-label fw-bold">
+    Project
+  </label>
+  <div className="dropdown">
+    <button
+      className="btn btn-outline-secondary dropdown-toggle w-100"
+      type="button"
+      id="projectDropdown"
+      data-bs-toggle="dropdown"
+      aria-expanded="false"
+    >
+      {searchTerm || "Select Project"}
+    </button>
+    <div
+      className="dropdown-menu p-3"
+      style={{ maxHeight: "300px", overflowY: "auto", width: "100%" }}
+      aria-labelledby="projectDropdown"
+    >
+      <input
+        type="text"
+        className="form-control mb-2"
+        placeholder="Search Projects..."
+        value={projectSearch}
+        onChange={(e) => setProjectSearch(e.target.value)}
+      />
+      {filteredProjects.length === 0 ? (
+        <div className="text-center text-muted">
+          No projects found
+        </div>
+      ) : (
+        filteredProjects.map((project) => (
+          <div
+            key={project}
+            className={`dropdown-item ${searchTerm === project ? "active" : ""}`}
+            onClick={() => {
+              setSearchTerm(project);
+              setProjectSearch("");
+            }}
+            style={{ cursor: "pointer" }}
+          >
+            {project}
+          </div>
+        ))
+      )}
+    </div>
+  </div>
+</div>
+
+// In resetFilters function (to clear the search)
+const resetFilters = () => {
+  setSearchTerm("");
+  setProjectSearch("");
+  // ... other resets ...
+};
+
+
+
+
+This snippet is part of the larger component. It assumes labourRequisitions is populated from an API call (as in the full code). The project filter integrates with the overall data filtering in filteredLabourRequisitions (using searchTerm to match Projnm).
+Detailed Explanation
+I'll break down the code step by step, explaining what each part does, why it's implemented this way, and how it contributes to the searchable project list functionality. This is a single-select searchable dropdown built with React and Bootstrap, allowing users to filter and select one project from a list derived from API data.
+1. State Management
+
+const [searchTerm, setSearchTerm] = useState("");
+
+Purpose: This state stores the selected project name. It's used in the main filtering logic (filteredLabourRequisitions) to filter records where labour.Projnm matches this value (case-insensitive).
+Why separate?: It persists the user's selection even after the dropdown closes. If empty, no project filter is applied (shows all projects).
+Initial Value: Empty string, meaning "All Projects" by default.
+
+
+const [projectSearch, setProjectSearch] = useState("");
+
+Purpose: This state stores the temporary search input typed by the user inside the dropdown. It's used to filter the project list dynamically as the user types.
+Why separate?: It allows real-time filtering within the dropdown without affecting the main searchTerm until a project is selected.
+Initial Value: Empty string. It's cleared automatically when a project is selected (see onClick handler).
+
+
+
+2. Computed Values with useMemo
+
+const uniqueProjects = useMemo(() => { ... }, [labourRequisitions]);
+
+Purpose: Extracts and computes a sorted list of unique project names from the labourRequisitions array (fetched from API). It maps over Projnm fields, filters out falsy values (e.g., null/undefined), removes duplicates using Set, and sorts alphabetically.
+Why useMemo?: Optimizes performance by memoizing the result. It only recomputes if labourRequisitions changes (e.g., after API fetch). Without it, this could run on every render, which is inefficient for large datasets.
+Output: An array like ["Project A", "Project B", "Project C"].
+Edge Cases: If labourRequisitions is not an array or empty, it returns an empty array.
+
+
+const filteredProjects = useMemo(() => { ... }, [uniqueProjects, projectSearch]);
+
+Purpose: Filters the uniqueProjects list based on the projectSearch input. It uses case-insensitive matching (toLowerCase().includes()).
+Why useMemo?: Memoizes the filtered list to avoid recomputing on every render. It updates only when uniqueProjects or projectSearch changes.
+Output: A subset of uniqueProjects that matches the search (e.g., typing "pro" might return ["Project A", "Project B"]).
+Edge Cases: If no matches, filteredProjects.length === 0, triggering a "No projects found" message.
+
+
+
+3. JSX for the Dropdown UI
+
+Label and Container:
+
+<div className="col-md-2"> ... </div>: This wraps the filter in a Bootstrap grid column (2/12 width).
+<label htmlFor="project-search" className="form-label fw-bold">Project</label>: A bold label for accessibility and styling.
+
+
+Dropdown Structure:
+
+<div className="dropdown"> ... </div>: Bootstrap's dropdown container.
+Button:
+
+<button className="btn btn-outline-secondary dropdown-toggle w-100" ... >{searchTerm || "Select Project"}</button>: The toggle button shows the selected project (or "Select Project" placeholder). It uses Bootstrap classes for styling and full-width (w-100).
+Attributes like data-bs-toggle="dropdown" enable Bootstrap's dropdown behavior.
+
+
+Dropdown Menu:
+
+<div className="dropdown-menu p-3" style={{ maxHeight: "300px", overflowY: "auto", width: "100%" }} ... > ... </div>: The menu content. Padding (p-3) for spacing, fixed max height with vertical scroll (overflowY: "auto") to handle long lists, and full-width to match the button.
+Search Input:
+
+<input type="text" className="form-control mb-2" placeholder="Search Projects..." value={projectSearch} onChange={(e) => setProjectSearch(e.target.value)} />: A text input for searching. Updates projectSearch on every keystroke, triggering real-time filtering via filteredProjects.
+Bootstrap form-control for styling, margin-bottom (mb-2) for spacing.
+
+
+Conditional Content:
+
+If filteredProjects.length === 0: Shows a muted message "No projects found" centered.
+Else: Maps over filteredProjects to render each as a clickable item.
+
+<div key={project} className={dropdown-item ${searchTerm === project ? "active" : ""}} onClick={() => { setSearchTerm(project); setProjectSearch(""); }} style={{ cursor: "pointer" }}>{project}</div>:
+
+Key: Unique key for React's list reconciliation.
+Class: dropdown-item for Bootstrap styling; adds active if this project is selected (highlights it).
+onClick: Selects the project by setting searchTerm, clears projectSearch (resets input), and the dropdown closes automatically (Bootstrap behavior).
+Style: Cursor pointer for hover feedback.
+
+
+
+
+
+
+
+
+
+
+
+4. Integration with Reset Filters
+
+In resetFilters(): setSearchTerm(""); setProjectSearch("");
+
+Purpose: Clears both the selected project and the temporary search input when the "Reset Filters" button is clicked.
+Why?: Ensures a full reset, returning to "All Projects" state.
+
+
+
+5. How It Works Overall
+
+Data Flow:
+
+API fetches labourRequisitions.
+uniqueProjects is computed once from the data.
+User clicks the dropdown button → Menu opens with search input.
+User types in search input → projectSearch updates → filteredProjects recomputes → List updates in real-time.
+User clicks a project → searchTerm set → Dropdown closes → Main filter applies (updates table via filteredLabourRequisitions).
+Pagination resets if searchTerm changes (via useEffect).
+
+
+Performance Considerations:
+
+useMemo prevents unnecessary computations.
+Suitable for large lists (e.g., 100+ projects) due to scrolling and filtering.
+
+
+Dependencies:
+
+Bootstrap CSS/JS for dropdown functionality.
+React hooks for state/memoization.
+
+
+Edge Cases Handled:
+
+No projects: Empty list with message.
+No matches: "No projects found".
+Case-insensitive search.
+Falsy Projnm values ignored.
+
+
+Improvements Possible:
+
+Debounce the search input for very large lists (to reduce re-renders).
+Add "All Projects" option explicitly in the list.
+Handle very long project names with text truncation.
+
+
+
+This implementation provides a user-friendly, searchable single-select dropdown for projects. If you need to integrate it into another component or modify it further, let me know!
