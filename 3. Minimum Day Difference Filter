@@ -1,0 +1,44 @@
+import React, { useMemo, useState } from "react";
+
+// Assuming purchaseBills is fetched elsewhere
+const [minDayDifference, setMinDayDifference] = useState(7);
+
+const calculateDayDifference = (approvedDate, inwardDate) => {
+  if (!approvedDate || !inwardDate) return null;
+  const approved = new Date(approvedDate);
+  const inward = new Date(inwardDate);
+  return Math.floor((approved - inward) / (1000 * 60 * 60 * 24));
+};
+
+// Filter logic (integrated into filteredBills)
+const filteredData = useMemo(() => {
+  const data = Array.isArray(purchaseBills) ? purchaseBills : [];
+  return data.filter((bill) => {
+    const daysDiff = calculateDayDifference(bill.Approved_date, bill.Inward_Date);
+    const dayMatch = daysDiff !== null && daysDiff >= minDayDifference;
+    return dayMatch; // Other filters would && here
+  });
+}, [purchaseBills, minDayDifference]);
+
+// UI for this filter
+return (
+  <div className="three">
+    <label className="m-2">
+      <b>Min Day Diff</b>
+    </label>
+    <input
+      type="number"
+      placeholder="Min Day Diff (Default: 7)"
+      value={minDayDifference}
+      onChange={(e) => setMinDayDifference(e.target.value)}
+      className="form-control"
+      min="0"
+    />
+  </div>
+);
+
+
+Explanation: This filter shows only records where the calculated day difference between Approved_date and Inward_Date is greater than or equal to a user-specified minimum (default 7). The difference is computed as whole days (floored), positive if approval is after inward. If dates are missing/invalid, daysDiff is null and the record is excluded. Edge cases: Handles invalid dates (null skips); minimum can be 0 or negative (though UI has min="0"); updates dayDelayCount in useEffect for summary display. Highlights cells in table if > minDayDifference.
+UI Trigger: A number input that updates minDayDifference on change.
+Logic: In filteredBills, computes daysDiff using calculateDayDifference and checks dayMatch as daysDiff !== null && daysDiff >= minDayDifference.
+Dependencies: Recalculates filteredBills on change; affects summaries like dayDelayCount.
