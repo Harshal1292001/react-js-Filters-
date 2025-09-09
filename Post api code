@@ -1,0 +1,101 @@
+const ticketGeneratehandleSubmit = async (e) => {
+  e.preventDefault();
+  setError("");
+  setLoading(true);
+
+  // Validation
+  if (
+    !ticketData.ticket_Status ||
+    !ticketData.ticket_Date ||
+    !reqGroupInputValue.reqGroupId ||
+    !inputValue.id
+  ) {
+    setError("Please fill all required fields");
+    setLoading(false);
+    return;
+  }
+
+  try {
+    const submissionData = {
+      ticket_Status: ticketData.ticket_Status,
+      completionDate: ticketData.completionDate,
+      emp_Dept: assignedEmployee.Dept_Name,
+      assign_Employee: assignedLoginName,
+      emp_Location: assignedEmployee.Loc_Name,
+      emp_Email: assignedEmployee.Email1,
+      assignedEmp_Id: assignedEmployee.Emp_Id,
+      ticket_Date: ticketData.ticket_Date,
+      req_Group_id: reqGroupInputValue.reqGroupId,
+      req_Type_id: inputValue.id,
+      reqGroupName: reqGroupInputValue.reqGroupName,
+      reqTypeName: inputValue.requestType,
+      issueImage: ticketData.issueImage,
+      remark: ticketData.remark,
+      raisedByName: raisedLoginName,
+      raisedByDepartment: employeeData.Dept_Name,
+      raisedByLocation: employeeData.Loc_Name,
+      raiseByEmail: employeeData.Email1,
+      raisedByEmp_Id: employeeData.Emp_Id,
+      TicketNo: ticketData.TicketNo,
+    };
+
+    const response = await axios.post(
+      `https://nyatiportal.nyatigroup.com:8080/api/TicketGenerate`,
+      submissionData,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (response.status === 200 || response.status === 201) {
+      alert("Ticket Generated Successfully");
+      setTicketData({
+        ticket_Status: "N",
+        completionDate: "",
+        emp_Dept: "",
+        assign_Employee: "",
+        emp_Location: "",
+        emp_Email: "",
+        assignedEmp_Id: "",
+        ticket_Date: "",
+        req_Group_id: "",
+        req_Type_id: "",
+        reqGroupName: "",
+        reqTypeName: "",
+        issueImage: "",
+        remark: "",
+        raisedByName: raisedLoginName,
+        raisedByDepartment: employeeData.Dept_Name,
+        raisedByLocation: employeeData.Loc_Name,
+        raiseByEmail: employeeData.Email1,
+        raisedByEmp_Id: employeeData.Emp_Id,
+        TicketNo: "",
+      });
+      setReqGroupInputValue({ reqGroupName: "", reqGroupId: "" });
+      setInputValue({ requestType: "", id: "" });
+      setAssignedLoginName("");
+      setRaisedLoginName(localStorage.getItem("username") || "");
+      setEmployeeData({
+        Dept_Name: "",
+        Loc_Name: "",
+        Email1: "",
+        Emp_Id: "",
+      });
+      setAssignedEmployee({
+        Dept_Name: "",
+        Loc_Name: "",
+        Email1: "",
+        Emp_Id: "",
+      });
+      setError("");
+    }
+  } catch (error) {
+    setError(
+      error.response?.data?.message ||
+        "Failed to Generate Ticket. Please Try again"
+    );
+  }
+  setLoading(false);
+};
