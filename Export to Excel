@@ -1,0 +1,136 @@
+
+```jsx
+import React, { useCallback } from "react";
+import * as XLSX from "xlsx";
+
+const ExportToExcel = ({ filteredLabourRequisitions, calculateDayDifference }) => {
+  const exportToExcel = useCallback(() => {
+    try {
+      const headers = [
+        "Project Name",
+        "Task Name",
+        "Labour Name",
+        "Labour Category",
+        "Req ID",
+        "Req Date",
+        "Qty",
+        "Approved Qty",
+        "Approval Date",
+        "WO No",
+        "Delay",
+      ];
+
+      const exportData = filteredLabourRequisitions.map((labour) => ({
+        "Project Name": labour.Projnm || "N/A",
+        "Task Name": labour.TASKNM || "N/A",
+        "Labour Name": labour.Labour_Name || "N/A",
+        "Labour Category": labour.Labour_Category || "N/A",
+        "Req ID": labour.Requisition_Id || "N/A",
+        "Req Date": labour.Requisition_Date
+          ? new Date(labour.Requisition_Date).toLocaleDateString("en-GB", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+            })
+          : "N/A",
+        Qty: labour.Qty || 0,
+        "Approved Qty": labour.Approved_Qty || 0,
+        "Approval Date": labour.Approval_Date
+          ? new Date(labour.Approval_Date).toLocaleDateString("en-GB", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+            })
+          : "N/A",
+        "WO No": labour.WO_No || "N/A",
+        Delay: calculateDayDifference(labour.Approval_Date) ?? 0,
+      }));
+
+      const colWidths = headers.map((header, index) => {
+        const maxLength = Math.max(
+          header.length,
+          ...exportData.map((row) => {
+            const value = Object.values(row)[index];
+            return String(value || "").length;
+          })
+        );
+        return { wch: Math.min(Math.max(maxLength, 10), 50) };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      ws["!cols"] = colWidths;
+
+      headers.forEach((_, index) => {
+        const cellRef = XLSX.utils.encode_cell({ r: 0, c: index });
+        if (!ws[cellRef]) ws[cellRef] = {};
+        ws[cellRef].s = { font: { bold: true } };
+      });
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "LabourRequisitions");
+      XLSX.writeFile(wb, "Labour_Requisitions_Report.xlsx");
+
+      alert("Excel file exported successfully!");
+    } catch (error) {
+      console.error("Error exporting to Excel:", error);
+      alert("Failed to export Excel file. Please try again.");
+    }
+  }, [filteredLabourRequisitions, calculateDayDifference]);
+
+  return (
+    <div className="col-md-1">
+      <button
+        className="btn btn-primary w-100"
+        onClick={exportToExcel}
+        disabled={filteredLabourRequisitions.length === 0}
+      >
+        Export to Excel
+      </button>
+    </div>
+  );
+};
+
+export default ExportToExcel;
+```
+
+
+2. Export to Excel
+Explanation
+The exportToExcel function exports the filtered labor requisition data to an Excel file named Labour_Requisitions_Report.xlsx. It uses the xlsx library to create a spreadsheet with dynamic column widths and bold headers. The function is memoized with useCallback, depending on filteredLabourRequisitions and calculateDayDifference.
+
+Purpose: Generate an Excel file from filteredLabourRequisitions, including all relevant fields and the calculated delay.
+Logic:
+
+Defines headers: ["Project Name", "Task Name", "Labour Name", "Labour Category", "Req ID", "Req Date", "Qty", "Approved Qty", "Approval Date", "WO No", "Delay"].
+Maps filteredLabourRequisitions to an array of objects with formatted values:
+
+Text fields (Projnm, TASKNM, Labour_Name, Labour_Category, Requisition_Id, WO_No): Use "N/A" for missing values.
+Dates (Requisition_Date, Approval_Date): Formatted as "DD/MM/YYYY" using toLocaleDateString("en-GB"), or "N/A" if missing.
+Numeric fields (Qty, Approved_Qty): Use 0 for missing values.
+Delay: Uses calculateDayDifference(labour.Approval_Date) ?? 0.
+
+
+Calculates column widths based on the maximum length of header or data (capped at 10–50 characters).
+Creates a worksheet with XLSX.utils.json_to_sheet, sets column widths (ws["!cols"]), and bolds headers.
+Writes the file using XLSX.writeFile.
+
+
+Error Handling:
+
+Wrapped in try/catch to handle export errors (e.g., invalid data, library issues).
+Shows an alert on success ("Excel file exported successfully!") or failure ("Failed to export Excel file. Please try again.").
+Logs errors to console for debugging.
+
+
+Edge Cases:
+
+Empty filteredLabourRequisitions: Button is disabled (disabled={loading || filteredLabourRequisitions.length === 0}).
+Missing fields: Handled with fallbacks ("N/A" or 0).
+Invalid dates: Handled by calculateDayDifference returning null, mapped to 0 in Excel.
+
+
+Dependencies:
+
+filteredLabourRequisitions: The filtered data to export.
+calculateDayDifference: For the "Delay" column.
+xlsx library (npm install xlsx).
