@@ -1,0 +1,61 @@
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+
+function LabourRequisitionDataFetch() {
+  const [labourRequisitions, setLabourRequisitions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const loadLabourRequisitions = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/api/labourrequisitions`;
+      const result = await axios.get(apiUrl);
+      console.log("API Response:", result.data);
+      const data = Array.isArray(result.data) ? result.data : [];
+      setLabourRequisitions(data);
+      if (data.length === 0) {
+        setError("No labour requisition data available.");
+      }
+    } catch (error) {
+      console.error("Error loading data:", error);
+      setError("Failed to load labour requisition data. Please try again later.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadLabourRequisitions();
+  }, []);
+
+  // Example UI rendering based on state
+  return (
+    <div>
+      {loading ? (
+        <div className="text-center my-4">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p>Loading data...</p>
+        </div>
+      ) : error ? (
+        <div className="alert alert-danger text-center" role="alert">
+          {error}
+        </div>
+      ) : labourRequisitions.length === 0 ? (
+        <div className="alert alert-warning text-center" role="alert">
+          No labour requisition data available.
+        </div>
+      ) : (
+        <div>
+          <h4>Data Loaded Successfully</h4>
+          <pre>{JSON.stringify(labourRequisitions, null, 2)}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default LabourRequisitionDataFetch;
