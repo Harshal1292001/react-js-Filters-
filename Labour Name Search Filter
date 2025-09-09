@@ -1,0 +1,38 @@
+import React, { useMemo, useState } from "react";
+
+// Assuming labourRequisitions is fetched elsewhere
+const [labourNameSearch, setLabourNameSearch] = useState("");
+
+// Filter logic (integrated into filteredLabourRequisitions)
+const filteredData = useMemo(() => {
+  return labourRequisitions.filter((labour) => {
+    const matchesLabourName = labourNameSearch
+      ? labour.Labour_Name?.toLowerCase().includes(
+          labourNameSearch.toLowerCase()
+        )
+      : true;
+    return matchesLabourName; // Other filters would && here
+  });
+}, [labourRequisitions, labourNameSearch]);
+
+// UI for this filter
+return (
+  <div className="col-md-2">
+    <label htmlFor="labour-name" className="form-label fw-bold">
+      Labour Name
+    </label>
+    <input
+      type="text"
+      id="labour-name"
+      className="form-control"
+      placeholder="Search Labour..."
+      value={labourNameSearch}
+      onChange={(e) => setLabourNameSearch(e.target.value)}
+    />
+  </div>
+);
+
+Explanation: This is a text input for partial, case-insensitive search on the Labour_Name field. It uses includes for contains-matching. If the search term is empty, all records match. Edge cases: Handles missing Labour_Name (treats as no match if search term present); safe for null/undefined with optional chaining.
+UI Trigger: A simple text input that updates labourNameSearch on change.
+Logic: In filteredLabourRequisitions, checks matchesLabourName using labour.Labour_Name?.toLowerCase().includes(labourNameSearch.toLowerCase()).
+Dependencies: Resets pagination on change.
