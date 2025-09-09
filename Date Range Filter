@@ -1,0 +1,51 @@
+import React, { useMemo, useState } from "react";
+
+// Assuming labourRequisitions is fetched elsewhere
+const [fromDate, setFromDate] = useState("");
+const [toDate, setToDate] = useState("");
+
+// Filter logic (integrated into filteredLabourRequisitions)
+const filteredData = useMemo(() => {
+  return labourRequisitions.filter((labour) => {
+    const requisitionDate = labour.Requisition_Date
+      ? new Date(labour.Requisition_Date)
+      : null;
+    const matchesDateRange =
+      (!fromDate ||
+        (requisitionDate && requisitionDate >= new Date(fromDate))) &&
+      (!toDate || (requisitionDate && requisitionDate <= new Date(toDate)));
+    return matchesDateRange; // Other filters would && here
+  });
+}, [labourRequisitions, fromDate, toDate]);
+
+// UI for this filter
+return (
+  <>
+    <div className="col-md-2">
+      <label className="form-label fw-bold">
+        Requisition: From Date
+      </label>
+      <input
+        type="date"
+        className="form-control"
+        value={fromDate}
+        onChange={(e) => setFromDate(e.target.value)}
+      />
+    </div>
+    <div className="col-md-2">
+      <label className="form-label fw-bold">Requisition: To Date</label>
+      <input
+        type="date"
+        className="form-control"
+        value={toDate}
+        onChange={(e) => setToDate(e.target.value)}
+      />
+    </div>
+  </>
+);
+
+
+Explanation: Filters records where Requisition_Date falls within the selected fromDate and toDate (inclusive). Dates are parsed to Date objects for comparison. If either date is empty, that bound is ignored. Edge cases: Handles missing/invalid Requisition_Date (skips comparison); uses >= and <= for inclusive range; assumes dates are in YYYY-MM-DD format from input.
+UI Trigger: Two date picker inputs updating fromDate and toDate.
+Logic: In filteredLabourRequisitions, checks matchesDateRange with date comparisons.
+Dependencies: Resets pagination on change.
