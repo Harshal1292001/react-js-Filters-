@@ -1,0 +1,80 @@
+import React, { useMemo, useState } from "react";
+
+// Assuming labourRequisitions is fetched elsewhere
+const [searchTerm, setSearchTerm] = useState("");
+const [projectSearch, setProjectSearch] = useState("");
+
+const uniqueProjects = useMemo(() => {
+  const projects = Array.isArray(labourRequisitions)
+    ? labourRequisitions.map((proj) => proj.Projnm).filter(Boolean)
+    : [];
+  return [...new Set(projects)].sort();
+}, [labourRequisitions]);
+
+const filteredProjects = useMemo(() => {
+  return uniqueProjects.filter((project) =>
+    project.toLowerCase().includes(projectSearch.toLowerCase())
+  );
+}, [uniqueProjects, projectSearch]);
+
+// Filter logic (integrated into filteredLabourRequisitions)
+const filteredData = useMemo(() => {
+  return labourRequisitions.filter((labour) => {
+    const matchesProjectName = searchTerm
+      ? labour.Projnm?.trim().toLowerCase() === searchTerm.trim().toLowerCase()
+      : true;
+    return matchesProjectName; // Other filters would && here
+  });
+}, [labourRequisitions, searchTerm]);
+
+// UI for this filter
+return (
+  <div className="col-md-2">
+    <label htmlFor="project-search" className="form-label fw-bold">
+      Project
+    </label>
+    <div className="dropdown">
+      <button
+        className="btn btn-outline-secondary dropdown-toggle w-100 text-start"
+        type="button"
+        id="projectDropdown"
+        data-bs-toggle="dropdown"
+        aria-expanded="false"
+      >
+        {searchTerm || "Select Project"}
+      </button>
+      <div
+        className="dropdown-menu p-3"
+        style={{ maxHeight: "600px", overflowY: "auto", width: "100%" }}
+        aria-labelledby="projectDropdown"
+      >
+        <input
+          type="text"
+          className="form-control mb-2"
+          placeholder="Search Projects..."
+          value={projectSearch}
+          onChange={(e) => setProjectSearch(e.target.value)}
+        />
+        {filteredProjects.length === 0 ? (
+          <div className="text-center text-muted">
+            No projects found
+          </div>
+        ) : (
+          filteredProjects.map((project) => (
+            <div
+              key={project}
+              className={`dropdown-item ${searchTerm === project ? "active" : ""}`}
+              onClick={() => {
+                setSearchTerm(project);
+                setProjectSearch("");
+              }}
+              style={{ cursor: "pointer", textAlign: "left" }}
+            >
+              {project}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  </div>
+);
