@@ -1,0 +1,205 @@
+All Filters in the PurchaseBillBrowse Component
+In the provided React code for the PurchaseBillBrowse component, filtering is handled in the filteredBills memoized value, which applies multiple conditions to the purchaseBills data array fetched from the API. The filters are based on user inputs from text fields, number inputs, and date pickers. After filtering, the data is used for pagination, summaries (e.g., total amount, tax, delayed bills count), and display in a table.
+The distinct filters are:
+
+Project Name Search Filter: Partial search on the project name (Projnm field).
+Supplier Name Search Filter: Partial search on the supplier name (Suppnm field).
+Minimum Day Difference Filter: Filters records where the day difference between Approved_date and Inward_Date is at least a specified number (default 7).
+Date Range Filter: Filters by a date range on the approved date (Approved_date field).
+
+Note: There's no explicit "status" filter like in previous code; instead, the table displays status but doesn't filter on it. The day difference is calculated as (new Date(approvedDate) - new Date(inwardDate)) / (1000 * 60 * 60 * 24), which measures days between inward and approval (positive if approval is after inward). The current date (September 09, 2025) isn't used in filters or calculations—it's likely contextual but not coded here.
+For each filter below, I'll:
+
+Explain in Detail: How it works, what UI element triggers it, the logic, and any edge cases.
+Separate Code Snippet: Extract the minimal, relevant code for that filter (including state, UI input, and filter logic). This is a standalone excerpt that could be integrated into a component, but it references shared variables like purchaseBills for context.
+
+
+1. Project Name Search Filter
+
+Explanation: This filter allows users to search for records by partial, case-insensitive matching on the project name (Projnm field). As the user types in the input, the table updates dynamically to show only matching records. If the search term is empty, all records match. Edge cases: Handles missing or null Projnm (optional chaining prevents errors, treats as no match if search term is present); safe for special characters or empty strings. The filter uses includes for contains-matching, making it flexible for substrings. It's combined with other filters via && in filteredBills.
+UI Trigger: A text input that updates searchTerm on change.
+Logic: In filteredBills, checks projMatch using bill.Projnm?.toLowerCase().includes(searchTerm.toLowerCase()).
+Dependencies: Triggers recalculation of filteredBills on change, which updates summaries and pagination via useEffect.
+
+Separate Code Snippet:
+jsximport React, { useMemo, useState } from "react";
+
+// Assuming purchaseBills is fetched elsewhere
+const [searchTerm, setSearchTerm] = useState("");
+
+// Filter logic (integrated into filteredBills)
+const filteredData = useMemo(() => {
+  const data = Array.isArray(purchaseBills) ? purchaseBills : [];
+  return data.filter((bill) => {
+    const projMatch = bill.Projnm?.toLowerCase().includes(searchTerm.toLowerCase());
+    return projMatch; // Other filters would && here
+  });
+}, [purchaseBills, searchTerm]);
+
+// UI for this filter
+return (
+  <div className="one">
+    <label className="m-2">
+      <b>Search by Project Name</b>
+    </label>
+    <input
+      type="text"
+      placeholder="Search by Project Name..."
+      value={searchTerm}
+      onChange={(e) => setSearchTerm(e.target.value)}
+      className="form-control"
+    />
+  </div>
+);
+
+2. Supplier Name Search Filter
+
+Explanation: This filter enables partial, case-insensitive searching on the supplier name (Suppnm field). It works similarly to the project name filter: as the user types, records are filtered in real-time. Empty input matches all records. Edge cases: Handles null or undefined Suppnm (no match if search term present); performs substring matching, so it's useful for partial names (e.g., "Supp" matches "Supplier XYZ"). Combined with other filters via &&.
+UI Trigger: A text input that updates supplierSearch on change.
+Logic: In filteredBills, checks supplierMatch using bill.Suppnm?.toLowerCase().includes(supplierSearch.toLowerCase()).
+Dependencies: Recalculates filteredBills on change, affecting summaries and pagination.
+
+Separate Code Snippet:
+jsximport React, { useMemo, useState } from "react";
+
+// Assuming purchaseBills is fetched elsewhere
+const [supplierSearch, setSupplierSearch] = useState("");
+
+// Filter logic (integrated into filteredBills)
+const filteredData = useMemo(() => {
+  const data = Array.isArray(purchaseBills) ? purchaseBills : [];
+  return data.filter((bill) => {
+    const supplierMatch = bill.Suppnm?.toLowerCase().includes(supplierSearch.toLowerCase());
+    return supplierMatch; // Other filters would && here
+  });
+}, [purchaseBills, supplierSearch]);
+
+// UI for this filter
+return (
+  <div className="two">
+    <label className="m-2">
+      <b>Search by Supplier Name</b>
+    </label>
+    <input
+      type="text"
+      placeholder="Search by Supplier Name..."
+      value={supplierSearch}
+      onChange={(e) => setSupplierSearch(e.target.value)}
+      className="form-control"
+    />
+  </div>
+);
+
+3. Minimum Day Difference Filter
+
+Explanation: This filter shows only records where the calculated day difference between Approved_date and Inward_Date is greater than or equal to a user-specified minimum (default 7). The difference is computed as whole days (floored), positive if approval is after inward. If dates are missing/invalid, daysDiff is null and the record is excluded. Edge cases: Handles invalid dates (null skips); minimum can be 0 or negative (though UI has min="0"); updates dayDelayCount in useEffect for summary display. Highlights cells in table if > minDayDifference.
+UI Trigger: A number input that updates minDayDifference on change.
+Logic: In filteredBills, computes daysDiff using calculateDayDifference and checks dayMatch as daysDiff !== null && daysDiff >= minDayDifference.
+Dependencies: Recalculates filteredBills on change; affects summaries like dayDelayCount.
+
+Separate Code Snippet:
+jsximport React, { useMemo, useState } from "react";
+
+// Assuming purchaseBills is fetched elsewhere
+const [minDayDifference, setMinDayDifference] = useState(7);
+
+const calculateDayDifference = (approvedDate, inwardDate) => {
+  if (!approvedDate || !inwardDate) return null;
+  const approved = new Date(approvedDate);
+  const inward = new Date(inwardDate);
+  return Math.floor((approved - inward) / (1000 * 60 * 60 * 24));
+};
+
+// Filter logic (integrated into filteredBills)
+const filteredData = useMemo(() => {
+  const data = Array.isArray(purchaseBills) ? purchaseBills : [];
+  return data.filter((bill) => {
+    const daysDiff = calculateDayDifference(bill.Approved_date, bill.Inward_Date);
+    const dayMatch = daysDiff !== null && daysDiff >= minDayDifference;
+    return dayMatch; // Other filters would && here
+  });
+}, [purchaseBills, minDayDifference]);
+
+// UI for this filter
+return (
+  <div className="three">
+    <label className="m-2">
+      <b>Min Day Diff</b>
+    </label>
+    <input
+      type="number"
+      placeholder="Min Day Diff (Default: 7)"
+      value={minDayDifference}
+      onChange={(e) => setMinDayDifference(e.target.value)}
+      className="form-control"
+      min="0"
+    />
+  </div>
+);
+
+4. Date Range Filter
+
+Explanation: This filter restricts records to those where Approved_date falls within the specified fromDate and toDate (inclusive). If only one date is set, it filters accordingly (e.g., fromDate only: >= fromDate). If both are empty, all records match. Dates are parsed to Date objects for comparison. Edge cases: Handles missing/invalid Approved_date (returns false); assumes input dates are valid (browser date picker ensures this); inclusive bounds.
+UI Trigger: Two date inputs updating fromDate and toDate on change.
+Logic: In filteredBills, checks dateMatch using isWithinDateRange(bill.Approved_date), which compares parsed dates.
+Dependencies: Recalculates filteredBills on change; resets pagination to 1 via useEffect.
+
+Separate Code Snippet:
+jsximport React, { useMemo, useState } from "react";
+
+// Assuming purchaseBills is fetched elsewhere
+const [fromDate, setFromDate] = useState("");
+const [toDate, setToDate] = useState("");
+
+const isWithinDateRange = (date) => {
+  if (!date) return false;
+  const approved = new Date(date);
+  const from = fromDate ? new Date(fromDate) : null;
+  const to = toDate ? new Date(toDate) : null;
+
+  if (from && to) {
+    return approved >= from && approved <= to;
+  } else if (from) {
+    return approved >= from;
+  } else if (to) {
+    return approved <= to;
+  }
+  return true;
+};
+
+// Filter logic (integrated into filteredBills)
+const filteredData = useMemo(() => {
+  const data = Array.isArray(purchaseBills) ? purchaseBills : [];
+  return data.filter((bill) => {
+    const dateMatch = isWithinDateRange(bill.Approved_date);
+    return dateMatch; // Other filters would && here
+  });
+}, [purchaseBills, fromDate, toDate]);
+
+// UI for this filter
+return (
+  <>
+    <div className="four">
+      <label className="m-2">
+        <b>From:</b>
+      </label>
+      <input
+        type="date"
+        value={fromDate}
+        onChange={(e) => setFromDate(e.target.value)}
+        className="form-control"
+      />
+    </div>
+    <div className="five">
+      <label className="m-2">
+        <b>To:</b>
+      </label>
+      <input
+        type="date"
+        value={toDate}
+        onChange={(e) => setToDate(e.target.value)}
+        className="form-control"
+      />
+    </div>
+  </>
+);6
