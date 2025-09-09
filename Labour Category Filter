@@ -1,0 +1,113 @@
+import React, { useMemo, useState } from "react";
+
+// Assuming labourRequisitions is fetched elsewhere
+const [selectedLabourCategories, setSelectedLabourCategories] = useState([]);
+const [selectAll, setSelectAll] = useState(false);
+
+const uniqueLabourCategories = useMemo(() => {
+  const categories = Array.isArray(labourRequisitions)
+    ? labourRequisitions.map((labour) => labour.Labour_Category).filter(Boolean)
+    : [];
+  return [...new Set(categories)].sort();
+}, [labourRequisitions]);
+
+const handleSelectAllChange = () => {
+  setSelectAll((prev) => {
+    const newSelectAll = !prev;
+    setSelectedLabourCategories(newSelectAll ? uniqueLabourCategories : []);
+    return newSelectAll;
+  });
+};
+
+const handleLabourCategoryChange = (category) => {
+  setSelectedLabourCategories((prev) => {
+    const newSelection = prev.includes(category)
+      ? prev.filter((cat) => cat !== category)
+      : [...prev, category];
+    setSelectAll(newSelection.length === uniqueLabourCategories.length);
+    return newSelection;
+  });
+};
+
+// Filter logic (integrated into filteredLabourRequisitions)
+const filteredData = useMemo(() => {
+  return labourRequisitions.filter((labour) => {
+    const matchesLabourCategory =
+      selectedLabourCategories.length === 0 ||
+      selectedLabourCategories.includes(labour.Labour_Category);
+    return matchesLabourCategory; // Other filters would && here
+  });
+}, [labourRequisitions, selectedLabourCategories]);
+
+// UI for this filter
+return (
+  <div className="col-md-2">
+    <label htmlFor="labour-category" className="form-label fw-bold">
+      Labour Category
+    </label>
+    <div className="dropdown">
+      <button
+        className="btn btn-outline-secondary dropdown-toggle w-100 text-start"
+        type="button"
+        id="labourCategoryDropdown"
+        data-bs-toggle="dropdown"
+        aria-expanded="false"
+      >
+        {selectedLabourCategories.length > 0
+          ? `${selectedLabourCategories.length} selected`
+          : "Select Labour Categories"}
+      </button>
+      <ul
+        className="dropdown-menu ps-3"
+        style={{ maxHeight: "500px", overflowY: "auto" }}
+        aria-labelledby="labourCategoryDropdown"
+      >
+        <li>
+          <div className="form-check px-3">
+            <input
+              className="form-check-input"
+              type="checkbox"
+              value="select-all"
+              checked={selectAll}
+              onChange={handleSelectAllChange}
+              id="select-all"
+            />
+            <label className="form-check-label" htmlFor="select-all">
+              Select All
+            </label>
+          </div>
+        </li>
+        <hr className="dropdown-divider" />
+        {uniqueLabourCategories.map((category) => (
+          <li key={category}>
+            <div className="form-check px-3">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                value={category}
+                checked={selectedLabourCategories.includes(category)}
+                onChange={() => handleLabourCategoryChange(category)}
+                id={`category-${category}`}
+              />
+              <label
+                className="form-check-label"
+                htmlFor={`category-${category}`}
+              >
+                {category}
+              </label>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </div>
+);
+
+
+
+
+
+Explanation: This is a multi-select checkbox filter for unique labor categories (Labour_Category field). Categories are dynamically extracted and sorted. Users can select multiple via checkboxes or "Select All". If no categories are selected, all records match. The filter checks if the record's category is in the selected list. Edge cases: Handles missing categories (filters them out in unique list); "Select All" toggles all/none and updates the button text to show selection count.
+UI Trigger: A dropdown with checkboxes and a "Select All" option.
+Logic: In filteredLabourRequisitions, checks matchesLabourCategory as selectedLabourCategories.length === 0 || selectedLabourCategories.includes(labour.Labour_Category).
+Dependencies: Resets pagination on change.
