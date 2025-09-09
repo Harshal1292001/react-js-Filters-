@@ -1,0 +1,50 @@
+import React, { useMemo, useState } from "react";
+
+// Assuming labourRequisitions is fetched elsewhere
+const [showApproved, setShowApproved] = useState(false);
+const [showPending, setShowPending] = useState(false);
+
+// Filter logic (integrated into filteredLabourRequisitions)
+const filteredData = useMemo(() => {
+  return labourRequisitions.filter((labour) => {
+    const statusMatch =
+      (!showApproved && !showPending) ||
+      (showApproved && showPending) ||
+      (showApproved && labour.ReqStatus_Id === 1) ||
+      (showPending && labour.ReqStatus_Id === 2);
+    if (!statusMatch) return false;
+    return true; // Other filters would && here
+  });
+}, [labourRequisitions, showApproved, showPending]);
+
+// UI for this filter (example, as it's not in code; add to row)
+return (
+  <div className="col-md-2">
+    <label className="form-label fw-bold">Status</label>
+    <div className="form-check">
+      <input
+        className="form-check-input"
+        type="checkbox"
+        checked={showApproved}
+        onChange={(e) => setShowApproved(e.target.checked)}
+      />
+      <label className="form-check-label">Show Approved</label>
+    </div>
+    <div className="form-check">
+      <input
+        className="form-check-input"
+        type="checkbox"
+        checked={showPending}
+        onChange={(e) => setShowPending(e.target.checked)}
+      />
+      <label className="form-check-label">Show Pending</label>
+    </div>
+  </div>
+);
+
+
+
+Explanation: This filter toggles visibility of approved (ReqStatus_Id === 1) and pending (ReqStatus_Id === 2) records. It uses two boolean states (showApproved, showPending). Logic: If neither is true, show all; if both true, show all; otherwise, show only the selected status(es). Edge cases: If status is missing or not 1/2, it won't match either; the filter short-circuits early if statusMatch is false.
+UI Trigger: Not shown in the code snippet (likely checkboxes for "Show Approved" and "Show Pending" are missing, but states are defined). Assuming they are toggled via unseen UI.
+Logic: In filteredLabourRequisitions, computes statusMatch with conditional ORs.
+Dependencies: Resets pagination on change.
