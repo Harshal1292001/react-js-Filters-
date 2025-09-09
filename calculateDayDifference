@@ -1,0 +1,74 @@
+
+import React, { useCallback } from "react";
+
+const DelayCalculation = ({ labourRequisitions }) => {
+  const calculateDayDifference = useCallback((approvalDate) => {
+    const approved = new Date(approvalDate);
+    const currentDate = new Date();
+    if (isNaN(approved.getTime())) return null; // Handle invalid dates
+    const timeDiff = Math.abs(currentDate.getTime() - approved.getTime());
+    return Math.floor(timeDiff / (1000 * 60 * 60 * 24)); // Whole days
+  }, []);
+
+  // Example rendering of delay for each record
+  return (
+    <div>
+      {labourRequisitions.map((labour, index) => (
+        <div key={labour.Requisition_Id || index}>
+          Requisition ID: {labour.Requisition_Id}, Delay: 
+          {calculateDayDifference(labour.Approval_Date) ?? "N/A"} days
+          {calculateDayDifference(labour.Approval_Date) > 30 && " (Delayed)"}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+export default DelayCalculation;
+Purpose: The calculateDayDifference function computes the delay in days between the Approval_Date of a labor requisition and the current date (new Date()). This is used to display a "Delay" column in the table and include it in the Excel export.
+Code:
+jsxconst calculateDayDifference = useCallback((approvalDate) => {
+  const approved = new Date(approvalDate);
+  const currentDate = new Date();
+  if (isNaN(approved.getTime())) return null; // Handle invalid dates
+  const timeDiff = Math.abs(currentDate.getTime() - approved.getTime());
+  return Math.floor(timeDiff / (1000 * 60 * 60 * 24)); // Whole days
+}, []);
+
+How It Works:
+
+Takes an approvalDate (string, expected in a valid date format like "YYYY-MM-DD").
+Parses it to a Date object and compares it with the current date (September 09, 2025).
+Returns null if the date is invalid (e.g., empty, malformed).
+Calculates the absolute time difference in milliseconds, converts to days (dividing by 1000 * 60 * 60 * 24), and floors to whole days.
+Memoized with useCallback (empty dependencies) for performance, as it doesn’t depend on changing state.
+
+
+Usage in Table:
+
+In the table’s <tbody>, each row calls calculateDayDifference(labour.Approval_Date) to display the delay.
+Applies text-danger class if delay > 30 days:
+jsx<td
+  style={{ textAlign: "center" }}
+  className={calculateDayDifference(labour.Approval_Date) > 30 ? "text-danger" : ""}
+>
+  {calculateDayDifference(labour.Approval_Date) ?? "N/A"}
+</td>
+
+
+
+Usage in Excel Export:
+
+Included in exportToExcel as the "Delay" column:
+jsxDelay: calculateDayDifference(labour.Approval_Date) ?? 0
+
+
+
+Edge Cases:
+
+Invalid Approval_Date: Returns null, displayed as "N/A" in the table and 0 in Excel.
+Missing Approval_Date: Handled by optional chaining (?? "N/A").
+Time zones: Uses local time for both dates, which may cause minor discrepancies if server and client time zones differ.
+
+
+No Filter: Currently, there’s no user-controlled filter to limit records by delay (e.g., show only delays ≥ 10 days). The delay is only calculated for display and export.
