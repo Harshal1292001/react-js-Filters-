@@ -1,0 +1,2429 @@
+### Introduction to the Code
+This is a React component named `Conveyance_Allowance` that implements a form for managing conveyance (travel) allowances. It allows employees to log travel entries, calculate costs based on vehicle type and distance, fetch locations and employee data from APIs, validate inputs, save data to a backend, display entries in a table, and export to Excel. It uses libraries like Axios for API calls, XLSX for Excel export, React-Toastify for notifications, and Bootstrap for styling.
+
+The code is structured as a functional component with hooks (useState, useEffect, useCallback, useMemo, useRef). I'll break it down into logical sections, providing:
+- **Separated Code**: The relevant code snippet for that logic.
+- **Detailed Explanation**: Step-by-step breakdown of what the code does, why it's used, and how it works.
+
+Sections are divided based on key functionalities as per your request (e.g., location fetch, Google Maps, etc.), plus other major logics for completeness.
+
+---
+
+### 1. Imports and Constants
+**Separated Code:**
+```javascript
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import axios from "axios";
+import * as XLSX from "xlsx";
+import "bootstrap/dist/css/bootstrap.min.css";
+import "../Travel_Entry_CSS/Conveyance_Allowance.css";
+import TravelEntryNav from "./TravelEntryNav";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+
+// Vehicle types configuration
+const VEHICLE_TYPES = {
+  "four-wheeler": { label: "Four Wheeler", Rate: 10 },
+  "two-wheeler": { label: "Two Wheeler", Rate: 5 },
+  "public-transport": { label: "Public Transport", Rate: 3 },
+  other: { label: "Other", Rate: 8 },
+};
+
+// Form validation rules
+const VALIDATION_RULES = {
+  FromDate: { required: false },
+  ToDate: { required: false },
+  VehicleType: { required: true },
+  Emp_Id: { required: true },
+  employeeName: { required: true },
+  Dept_Name: { required: true },
+  IssueDate: { required: true },
+  fromLocation: { required: true },
+  toLocation: { required: true },
+  TotalKM: { required: true, min: 0.1 },
+  Rate: { required: true, min: 0.1 },
+  Remark: { required: false },
+};
+```
+
+**Detailed Explanation:**
+- **Imports**: 
+  - React hooks (useState for state, useEffect for side effects like API calls, useCallback for memoized functions, useMemo for memoized values, useRef for DOM references).
+  - Axios: For making HTTP requests to the backend API (e.g., GET/POST/PUT/DELETE).
+  - XLSX: Library for generating Excel files from data.
+  - Bootstrap CSS: For styling the UI (grids, forms, tables).
+  - Custom CSS: Specific styles for this component.
+  - TravelEntryNav: A navigation component (likely a sidebar or header).
+  - React-Toastify: For displaying toast notifications (success/error messages).
+- **Constants**:
+  - `VEHICLE_TYPES`: An object defining vehicle options with labels and rates (in ₹ per KM). Used to populate a dropdown and auto-set rates.
+  - `VALIDATION_RULES`: Defines rules for form fields (required or not, min values). This is used in validation logic to check user inputs before submission.
+- **Purpose**: Sets up the foundation. Constants are static configurations to avoid hardcoding values in the code, making it easier to maintain (e.g., change rates without editing multiple places).
+
+---
+
+### 2. State Management
+**Separated Code:**
+```javascript
+const [formData, setFormData] = useState({
+  FromDate: "",
+  ToDate: "",
+  VehicleType: "",
+  VehicleNo: "",
+  Emp_Id: "",
+  employeeName: "",
+  Dept_Name: "",
+  IssueId: "new",
+  IssueDate: "",
+  fromLocation: "",
+  toLocation: [],
+  TotalKM: "",
+  Rate: "",
+  BillAmount: "",
+  Remark: "",
+});
+
+const [entries, setEntries] = useState([]);
+const [errors, setErrors] = useState({});
+const [isLoading, setIsLoading] = useState(false);
+const [locations, setLocations] = useState([]);
+const [isLoadingLocations, setIsLoadingLocations] = useState(false);
+const [showLocationDropdown, setShowLocationDropdown] = useState(null);
+const [fromLocationSearchQuery, setFromLocationSearchQuery] = useState("");
+const [toLocationSearchQuery, setToLocationSearchQuery] = useState("");
+const [tableSearchQuery, setTableSearchQuery] = useState("");
+const [loginName] = useState(localStorage.getItem("username") || "");
+const [headExists, setHeadExists] = useState(false);
+
+const fromLocationRef = useRef(null);
+const toLocationRef = useRef(null);
+const dropdownRef = useRef(null);
+```
+
+**Detailed Explanation:**
+- **formData**: Holds all form field values (e.g., dates, locations, distances). Initialized empty or with defaults. Updated via `setFormData` on user input.
+- **entries**: Array of saved travel entries (displayed in table). Updated when adding/deleting entries.
+- **errors**: Object for validation errors (e.g., { FromDate: "Required" }). Displayed under fields.
+- **isLoading**: Boolean to show loading spinner during API calls (prevents multiple submits).
+- **locations**: Array of location data fetched from API, used in dropdowns.
+- **isLoadingLocations**: Loading state for location fetch.
+- **showLocationDropdown**: Controls which dropdown (from/to) is visible (null hides both).
+- **Search Queries**: For filtering locations in dropdowns and entries in table.
+- **loginName**: Fetched from localStorage (user's username for employee data).
+- **headExists**: Flag if a "PetrolHead" record exists in backend (for create/update logic).
+- **Refs**: DOM references for inputs and dropdown (used to detect clicks outside for closing dropdowns).
+- **Purpose**: Manages component state reactively. React re-renders on state changes. useRef is used for non-re-rendering values (e.g., DOM elements).
+
+---
+
+### 3. Memoized Values (Rates and Filters)
+**Separated Code:**
+```javascript
+// Memoized vehicle Rates
+const Rates = useMemo(() => {
+  const RateMap = {};
+  Object.keys(VEHICLE_TYPES).forEach((key) => {
+    RateMap[key] = VEHICLE_TYPES[key].Rate;
+  });
+  return RateMap;
+}, []);
+
+// Filter locations for dropdown
+const filteredFromLocations = useMemo(() => {
+  if (!fromLocationSearchQuery) return locations;
+  return locations.filter((loc) =>
+    loc?.Loc_Name?.toLowerCase().includes(fromLocationSearchQuery.toLowerCase())
+  );
+}, [locations, fromLocationSearchQuery]);
+
+const filteredToLocations = useMemo(() => {
+  if (!toLocationSearchQuery) return locations;
+  return locations.filter((loc) =>
+    loc?.Loc_Name?.toLowerCase().includes(toLocationSearchQuery.toLowerCase())
+  );
+}, [locations, toLocationSearchQuery]);
+
+// Filter entries for table search
+const filteredEntries = useMemo(() => {
+  if (!tableSearchQuery) return entries;
+  return entries.filter((entry) => {
+    const description = entry.Remark1 || "";
+    return description.toLowerCase().includes(tableSearchQuery.toLowerCase());
+  });
+}, [entries, tableSearchQuery]);
+```
+
+**Detailed Explanation:**
+- **Rates**: Memoized object mapping vehicle types to rates (e.g., { "four-wheeler": 10 }). Computed once (empty dependency array) from VEHICLE_TYPES. Avoids recomputing on every render.
+- **filteredFromLocations / filteredToLocations**: Memoized arrays filtering locations based on search queries. Case-insensitive search on Loc_Name. Recomputes only when locations or query change.
+- **filteredEntries**: Memoized filtered table entries based on table search query. Searches in "Remark1" (route description).
+- **Purpose**: useMemo optimizes performance by caching computations. Prevents unnecessary re-filters on every render, especially useful for large lists.
+
+---
+
+### 4. Location Fetching Logic
+**Separated Code:**
+```javascript
+// Fetch location data from API
+useEffect(() => {
+  const fetchLocationData = async () => {
+    setIsLoadingLocations(true);
+    try {
+      const response = await axios.get("https://localhost:1234/api/LocationMaster", {
+        headers: { "Content-Type": "application/json" },
+      });
+      if (Array.isArray(response.data)) {
+        const validLocations = response.data.filter(
+          (loc) => loc.Loc_Id && loc.Loc_Name && typeof loc.Loc_Name === "string"
+        );
+        if (validLocations.length === 0) {
+          throw new Error("No valid locations found");
+        }
+        setLocations(validLocations);
+        setErrors((prev) => ({ ...prev, locationFetch: undefined }));
+      } else {
+        throw new Error("Invalid location data format");
+      }
+    } catch (error) {
+      console.error("Error fetching location data:", error);
+      setErrors((prev) => ({
+        ...prev,
+        locationFetch: (
+          <span>
+            Failed to fetch location data.{" "}
+            <button className="btn btn-link p-0" onClick={() => fetchLocationData()}>
+              Retry
+            </button>
+          </span>
+        ),
+      }));
+      toast.error("Failed to fetch location data");
+    } finally {
+      setIsLoadingLocations(false);
+    }
+  };
+  fetchLocationData();
+}, []);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs once on component mount (empty dependency). Fetches locations from backend API.
+- **Async Function**: Uses Axios GET to "https://localhost:1234/api/LocationMaster".
+- **Validation**: Checks if response is array, filters valid locations (with Loc_Id, Loc_Name as string). Throws errors if invalid.
+- **Success**: Sets locations state, clears error.
+- **Error Handling**: Logs error, sets error message with retry button, shows toast.
+- **Finally**: Stops loading state.
+- **Purpose**: Populates location dropdowns. Retry button allows re-fetch without reload. Localhost suggests development backend (e.g., Node.js/Express).
+
+---
+
+### 5. Employee Data Fetching Logic
+**Separated Code:**
+```javascript
+// Fetch employee data
+useEffect(() => {
+  const fetchedEmployeeData = async () => {
+    if (!loginName.trim()) {
+      setFormData((prev) => ({
+        ...prev,
+        Dept_Name: "",
+        Emp_Id: "",
+        employeeName: "",
+      }));
+      return;
+    }
+    try {
+      const response = await axios.get(
+        `https://localhost:1234/api/EmployeePortal/${loginName}`,
+        {
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+      const employees = response.data;
+      if (employees.length > 0) {
+        const employee = employees[0];
+        setFormData((prev) => ({
+          ...prev,
+          Dept_Name: employee.Dept_Name || "",
+          Emp_Id: employee.Emp_Id || "",
+          employeeName: loginName,
+        }));
+      } else {
+        setFormData((prev) => ({
+          ...prev,
+          Dept_Name: "",
+          Emp_Id: "",
+          employeeName: "",
+        }));
+        toast.error("No employee data found for this user");
+      }
+    } catch (err) {
+      console.error("Error fetching employee data:", err);
+      toast.error("Failed to fetch employee data. Please try again.");
+      setFormData((prev) => ({
+        ...prev,
+        Dept_Name: "",
+        Emp_Id: "",
+        employeeName: "",
+      }));
+    }
+  };
+  fetchedEmployeeData();
+}, [loginName]);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs when loginName changes (from localStorage).
+- **Check**: If no loginName, clears employee fields.
+- **Async Fetch**: GET to API with loginName in URL.
+- **Success**: Takes first employee, updates formData with Dept_Name, Emp_Id, employeeName.
+- **No Data**: Clears fields, shows toast error.
+- **Error**: Logs, shows toast, clears fields.
+- **Purpose**: Auto-fills employee info based on logged-in user. Assumes API returns array of employees.
+
+---
+
+### 6. Date Handling and Auto-Set From/To Dates
+**Separated Code:**
+```javascript
+// Auto-set FromDate and ToDate based on current date (26th to 25th cycle)
+useEffect(() => {
+  const today = new Date();
+  const day = today.getDate();
+  let FromDateStr, ToDateStr;
+
+  if (day <= 26) {
+    FromDateStr = new Date(today.getFullYear(), today.getMonth() - 1, 27)
+      .toISOString()
+      .slice(0, 10);
+    ToDateStr = new Date(today.getFullYear(), today.getMonth(), 26)
+      .toISOString()
+      .slice(0, 10);
+  } else {
+    FromDateStr = new Date(today.getFullYear(), today.getMonth(), 27)
+      .toISOString()
+      .slice(0, 10);
+    ToDateStr = new Date(today.getFullYear(), today.getMonth() + 1, 26)
+      .toISOString()
+      .slice(0, 10);
+  }
+
+  setFormData((prev) => ({ ...prev, FromDate: FromDateStr, ToDate: ToDateStr }));
+}, []);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs once on mount.
+- **Logic**: Gets current date. If day <=26, sets FromDate to last month's 27th, ToDate to this month's 26th. Else, FromDate this month's 27th, ToDate next month's 26th.
+- **Format**: Converts to YYYY-MM-DD using toISOString().slice(0,10).
+- **Update**: Sets formData.
+- **Purpose**: Auto-sets billing cycle (e.g., for monthly allowances from 27th to 26th). Custom business rule.
+
+---
+
+### 7. Auto-Generate IssueId
+**Separated Code:**
+```javascript
+// Auto-generate IssueId based on ToDate month/year and Emp_Id
+useEffect(() => {
+  if (formData.Emp_Id && formData.ToDate) {
+    const yearMonth = formData.ToDate.slice(0, 7).replace("-", "");
+    const newIssueId = `${yearMonth}${formData.Emp_Id}`;
+    setFormData((prev) => ({ ...prev, IssueId: newIssueId }));
+  } else {
+    setFormData((prev) => ({ ...prev, IssueId: "new" }));
+  }
+}, [formData.Emp_Id, formData.ToDate]);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs when Emp_Id or ToDate changes.
+- **Logic**: If both present, takes ToDate's YYYY-MM (e.g., "2025-09" -> "202509"), appends Emp_Id (e.g., "202509EMP123").
+- **Else**: Sets to "new".
+- **Purpose**: Generates unique ID for travel record (e.g., for backend primary key). Combines date and employee for uniqueness.
+
+---
+
+### 8. Fetch Head and Details (Existing Data)
+**Separated Code:**
+```javascript
+// Fetch head and details when IssueId is set
+useEffect(() => {
+  const fetchHeadAndDetails = async () => {
+    if (formData.IssueId === "new") {
+      setEntries([]);
+      setHeadExists(false);
+      return;
+    }
+
+    // Fetch head
+    try {
+      const headResponse = await axios.get(`https://localhost:1234/api/PetrolHead/${formData.IssueId}`);
+      setFormData((prev) => ({
+        ...prev,
+        VehicleType: headResponse.data.VehicleType || "",
+        VehicleNo: headResponse.data.VehicleNo || "",
+        FromDate: headResponse.data.FromDate || prev.FromDate,
+        ToDate: headResponse.data.ToDate || prev.ToDate,
+        BillAmount: headResponse.data.BillAmount || "",
+      }));
+      setHeadExists(true);
+    } catch (err) {
+      if (err.response?.status === 404) {
+        setHeadExists(false);
+      } else {
+        console.error("Error fetching PetrolHead:", err);
+        toast.error("Failed to fetch conveyance header data");
+      }
+    }
+
+    // Fetch details
+    try {
+      const detailsResponse = await axios.get(`https://localhost:1234/api/PetrolDetails/${formData.IssueId}`);
+      const loadedEntries = detailsResponse.data.map((detail, index) => ({
+        srNo: detail.SrNo || index + 1,
+        IssueDate: detail.IssueDate,
+        Remark1: detail.Remark1 || `${detail.fromLocation} to ${detail.toLocation}`,
+        fromLocation: detail.fromLocation || "",
+        toLocation: detail.toLocation ? detail.toLocation.split(", ") : [],
+        UOM: detail.UOM || "KM",
+        TotalKM: detail.Quantity,
+        Rate: detail.Rate,
+        BillAmount: detail.TotalAmount,
+        Remark: detail.Remark || "",
+        VehicleType: detail.VehicleType || formData.VehicleType,
+        VehicleNo: detail.VehicleNo || formData.VehicleNo,
+      }));
+      setEntries(loadedEntries);
+    } catch (err) {
+      console.error("Error fetching PetrolDetails:", err);
+      setEntries([]);
+      toast.error("Failed to fetch conveyance details");
+    }
+  };
+
+  fetchHeadAndDetails();
+}, [formData.IssueId]);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs when IssueId changes.
+- **If "new"**: Clears entries, sets headExists false.
+- **Fetch Head**: GET to PetrolHead API. Updates formData with existing data, sets headExists true. Handles 404 (no head) silently.
+- **Fetch Details**: GET to PetrolDetails. Maps response to entries format (e.g., splits toLocation string to array).
+- **Error**: Clears entries, shows toast.
+- **Purpose**: Loads existing travel data for editing (header for overall, details for table rows).
+
+---
+
+### 9. Dropdown Close on Outside Click
+**Separated Code:**
+```javascript
+// Close dropdown when clicking outside
+useEffect(() => {
+  const handleClickOutside = (event) => {
+    if (
+      fromLocationRef.current &&
+      !fromLocationRef.current.contains(event.target) &&
+      toLocationRef.current &&
+      !toLocationRef.current.contains(event.target) &&
+      dropdownRef.current &&
+      !dropdownRef.current.contains(event.target)
+    ) {
+      setShowLocationDropdown(null);
+      setFromLocationSearchQuery("");
+      setToLocationSearchQuery("");
+    }
+  };
+  document.addEventListener("mousedown", handleClickOutside);
+  return () => {
+    document.removeEventListener("mousedown", handleClickOutside);
+  };
+}, []);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs once, adds event listener for mousedown on document.
+- **Logic**: Checks if click is outside refs (from/to inputs, dropdown). If yes, hides dropdown, clears searches.
+- **Cleanup**: Removes listener on unmount.
+- **Purpose**: UX improvement - closes dropdown automatically like native select.
+
+---
+
+### 10. Form Validation Logic
+**Separated Code:**
+```javascript
+// Form validation
+const validateForm = useCallback((data) => {
+  const newErrors = {};
+
+  Object.keys(VALIDATION_RULES).forEach((field) => {
+    const rule = VALIDATION_RULES[field];
+    const value = data[field];
+
+    if (rule.required) {
+      if (field === "toLocation") {
+        if (!Array.isArray(value) || value.length === 0) {
+          newErrors[field] = `${field
+            .replace(/([A-Z])/g, " $1")
+            .replace(/^./, (str) => str.toUpperCase())} is required`;
+        }
+      } else if (!value || value.toString().trim() === "") {
+        newErrors[field] = `${field
+          .replace(/([A-Z])/g, " $1")
+          .replace(/^./, (str) => str.toUpperCase())} is required`;
+      }
+    }
+
+    if (rule.min && value && !isNaN(value) && parseFloat(value) < rule.min) {
+      newErrors[field] = `${field
+        .replace(/([A-Z])/g, " $1")
+        .replace(/^./, (str) => str.toUpperCase())} must be at least ${rule.min}`;
+    }
+  });
+
+  if (data.FromDate && data.ToDate && new Date(data.FromDate) > new Date(data.ToDate)) {
+    newErrors.ToDate = "To date must be after from date";
+  }
+
+  if (data.IssueDate && data.FromDate && data.ToDate) {
+    const IssueDate = new Date(data.IssueDate);
+    const FromDate = new Date(data.FromDate);
+    const ToDate = new Date(data.ToDate);
+
+    if (IssueDate < FromDate || IssueDate > ToDate) {
+      newErrors.IssueDate = "Travel date must be within the from and to date range";
+    }
+  }
+
+  if (data.fromLocation && data.toLocation.length > 0 && data.toLocation.includes(data.fromLocation)) {
+    newErrors.toLocation = "To location cannot be the same as from location";
+  }
+
+  setErrors(newErrors);
+  return Object.keys(newErrors).length === 0;
+}, []);
+```
+
+**Detailed Explanation:**
+- **useCallback**: Memoizes function (empty dependency).
+- **Loop Rules**: For each field in VALIDATION_RULES, checks required (handles toLocation as array), min value.
+- **Additional Checks**: FromDate <= ToDate, IssueDate within range, fromLocation != toLocation.
+- **Error Formatting**: CamelCase to human-readable (e.g., "FromDate" -> "From Date").
+- **Set Errors**: Updates state, returns true if no errors.
+- **Purpose**: Ensures valid data before submit. Custom rules for business logic (e.g., date ranges).
+
+---
+
+### 11. Input Change Handler
+**Separated Code:**
+```javascript
+// Handle input change
+const handleChange = useCallback(
+  (e) => {
+    const { name, value } = e.target;
+    let newValue = value;
+
+    if (["TotalKM", "Rate"].includes(name)) {
+      newValue = value === "" ? "" : Math.max(0, parseFloat(value)) || "";
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      [name]: newValue,
+    }));
+
+    if (errors[name]) {
+      setErrors((prev) => ({
+        ...prev,
+        [name]: undefined,
+      }));
+    }
+
+    if (name === "fromLocation") {
+      setFromLocationSearchQuery(value);
+    } else if (name === "toLocation") {
+      setToLocationSearchQuery(value);
+    }
+  },
+  [errors]
+);
+```
+
+**Detailed Explanation:**
+- **useCallback**: Memoizes, depends on errors.
+- **Logic**: Gets name/value from event. For numeric fields, ensures >=0 or empty.
+- **Update**: Sets formData, clears error for that field.
+- **Search**: Updates search queries for location fields.
+- **Purpose**: Handles all form inputs uniformly. Clears errors on change for real-time feedback.
+
+---
+
+### 12. Location Selection Handlers
+**Separated Code:**
+```javascript
+// Handle location input click
+const handleLocationInputClick = (field) => {
+  setShowLocationDropdown(field);
+  if (field === "fromLocation") {
+    setFromLocationSearchQuery("");
+    setToLocationSearchQuery("");
+  } else {
+    setToLocationSearchQuery("");
+    setFromLocationSearchQuery("");
+  }
+};
+
+// Handle location selection
+const handleLocationSelect = (locName, field) => {
+  if (field === "fromLocation") {
+    setFormData((prev) => ({
+      ...prev,
+      fromLocation: locName,
+    }));
+    setShowLocationDropdown(null);
+  } else {
+    setFormData((prev) => {
+      const currentLocations = prev.toLocation;
+      let newLocations;
+      if (currentLocations.includes(locName)) {
+        newLocations = currentLocations.filter((loc) => loc !== locName);
+      } else {
+        newLocations = [...currentLocations, locName];
+      }
+      return { ...prev, toLocation: newLocations };
+    });
+  }
+
+  setErrors((prev) => ({
+    ...prev,
+    [field]: undefined,
+  }));
+};
+
+// Handle location selection from table
+const handleTableLocationSelect = (location, field) => {
+  if (!location) return;
+  if (field === "fromLocation") {
+    setFormData((prev) => ({
+      ...prev,
+      fromLocation: location,
+    }));
+  } else {
+    setFormData((prev) => {
+      const currentLocations = prev.toLocation;
+      let newLocations;
+      if (currentLocations.includes(location)) {
+        newLocations = currentLocations.filter((loc) => loc !== location);
+      } else {
+        newLocations = [...currentLocations, location];
+      }
+      return { ...prev, toLocation: newLocations };
+    });
+  }
+
+  setErrors((prev) => ({
+    ...prev,
+    [field]: undefined,
+  }));
+  toast.success(`Selected ${location} for ${field === "fromLocation" ? "From Location" : "To Location"}`);
+};
+```
+
+**Detailed Explanation:**
+- **handleLocationInputClick**: Shows dropdown for field, clears searches.
+- **handleLocationSelect**: For from: sets single value, hides dropdown. For to: toggles in array (add/remove). Clears error.
+- **handleTableLocationSelect**: Similar to above, but for clicking locations in table. Shows toast.
+- **Purpose**: Manages location dropdown interactions. ToLocation is multi-select (array), From is single.
+
+---
+
+### 13. Table Search Handler
+**Separated Code:**
+```javascript
+// Handle table search
+const handleTableSearchChange = (e) => {
+  setTableSearchQuery(e.target.value);
+};
+```
+
+**Detailed Explanation:**
+- **Simple Setter**: Updates tableSearchQuery on input change.
+- **Purpose**: Filters table entries in real-time (used in filteredEntries memo).
+
+---
+
+### 14. Auto-Set Rate Based on Vehicle Type
+**Separated Code:**
+```javascript
+// Set Rate based on vehicle type
+useEffect(() => {
+  if (formData.VehicleType) {
+    setFormData((prev) => ({
+      ...prev,
+      Rate: Rates[formData.VehicleType] || "",
+    }));
+  }
+}, [formData.VehicleType, Rates]);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs when VehicleType or Rates change.
+- **Logic**: Looks up rate from memoized Rates, sets in formData.
+- **Purpose**: Auto-populates Rate when vehicle selected (e.g., four-wheeler -> 10).
+
+---
+
+### 15. Auto-Calculate BillAmount
+**Separated Code:**
+```javascript
+// Auto calculate BillAmount
+useEffect(() => {
+  const { TotalKM, Rate } = formData;
+  if (TotalKM && Rate && !isNaN(TotalKM) && !isNaN(Rate)) {
+    const calculatedBillAmount = (parseFloat(TotalKM) * parseFloat(Rate)).toFixed(2);
+    setFormData((prev) => ({ ...prev, BillAmount: calculatedBillAmount }));
+  } else {
+    setFormData((prev) => ({ ...prev, BillAmount: "" }));
+  }
+}, [formData.TotalKM, formData.Rate]);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs on TotalKM or Rate change.
+- **Logic**: If both valid numbers, calculates TotalKM * Rate (fixed to 2 decimals). Else, clears.
+- **Purpose**: Real-time cost calculation for user convenience.
+
+---
+
+### 16. Form Submit Logic
+**Separated Code:**
+```javascript
+// Submit form with POST requests to PetrolHead and PetrolDetails
+const handleSubmit = useCallback(
+  async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      if (!validateForm(formData)) {
+        toast.error("Please fix the validation errors before submitting");
+        return;
+      }
+
+      if (!formData.fromLocation || formData.toLocation.length === 0) {
+        toast.error("Please select both From and To locations");
+        return;
+      }
+
+      const newBillAmount = parseFloat(formData.BillAmount);
+      const currentSum = entries.reduce((acc, entry) => acc + (parseFloat(entry.BillAmount) || 0), 0);
+      const totalBillAmount = headExists ? (currentSum + newBillAmount).toFixed(2) : newBillAmount.toFixed(2);
+
+      // Prepare header payload
+      const headerPayload = {
+        IssueId: formData.IssueId,
+        IssueNo: null,
+        IssueDate: formData.IssueDate,
+        IssueTime: new Date().toLocaleTimeString(),
+        BuildingId: null,
+        SiteId: null,
+        Total: parseFloat(formData.TotalKM),
+        BillAmount: parseFloat(totalBillAmount),
+        TotalKM: parseFloat(formData.TotalKM),
+        VehicleType: formData.VehicleType,
+        VehicleNo: formData.VehicleNo || null,
+        Approved: null,
+        NonApproved: null,
+        VoucherPost: null,
+        Filepath: null,
+        EmpCode: formData.Emp_Id,
+        FromDate: formData.FromDate,
+        ToDate: formData.ToDate,
+        ApprovedBy: null,
+        ApprovedDate: null,
+        SubmittedTo: null,
+        SubmittedDate: null,
+        VoucherNo: null,
+        VoucherDate: null,
+        CostcenterId: null,
+        Costcenter: null,
+        CompanyId: null,
+        CompanyName: null,
+        ExpensesId: null,
+        ExpensesAc: null,
+        BankId: null,
+        BankName: null,
+        AccountingYear: new Date().getFullYear(),
+        Approvedtime: null,
+        Hostname: window.location.hostname,
+      };
+
+      // Prepare details payload
+      const detailPayload = {
+        IssueId: formData.IssueId,
+        IssueNo: null,
+        IssueDate: formData.IssueDate,
+        ChallanNo: null,
+        ChallanDate: null,
+        MatClassId: null,
+        MatNo: null,
+        ConversitionFactor: null,
+        ItemclassId: null,
+        ItemNo: null,
+        SrNo: entries.length + 1,
+        UOM: "KM",
+        StockInHand: null,
+        Quantity: parseFloat(formData.TotalKM),
+        MRP: null,
+        Rate: parseFloat(formData.Rate),
+        PurchaseRate: null,
+        Amount: newBillAmount,
+        PurchaseAmount: null,
+        TaxPer: null,
+        TaxAmount: null,
+        TotalAmount: newBillAmount,
+        Remark: formData.Remark || null,
+        HSNCode: null,
+        TaxSchemeId: null,
+        TaxScheme: null,
+        Filepath: null,
+        EmpCode: formData.Emp_Id,
+        Remark1: `${formData.fromLocation} to ${formData.toLocation.join(", ")}`,
+      };
+
+      console.log("Submitting detail payload:", detailPayload);
+      console.log("Header action:", headExists ? "UPDATE" : "CREATE", "with total:", totalBillAmount);
+
+      // For first entry, create PetrolHead and PetrolDetails
+      if (!headExists) {
+        const headResponse = await axios.post(
+          "https://localhost:1234/api/PetrolHead",
+          headerPayload,
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        if (headResponse.status !== 200 && headResponse.status !== 201) {
+          throw new Error(`Unexpected head response status: ${headResponse.status}`);
+        }
+        setHeadExists(true);
+      }
+
+      // Post the detail to PetrolDetails
+      const detailsResponse = await axios.post(
+        "https://localhost:1234/api/PetrolDetails",
+        detailPayload,
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (detailsResponse.status !== 200 && detailsResponse.status !== 201) {
+        throw new Error(`Unexpected details response status: ${detailsResponse.status}`);
+      }
+
+      // Update PetrolHead BillAmount if this is not the first entry
+      if (headExists) {
+        const updateResponse = await axios.put(
+          `https://localhost:1234/api/PetrolHead/${formData.IssueId}`,
+          { BillAmount: parseFloat(totalBillAmount) },
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        if (updateResponse.status !== 200) {
+          throw new Error(`Unexpected update response status: ${updateResponse.status}`);
+        }
+      }
+
+      // Add to local entries
+      const newEntry = {
+        srNo: entries.length + 1,
+        IssueDate: formData.IssueDate,
+        Remark1: `${formData.fromLocation} to ${formData.toLocation.join(", ")}`,
+        fromLocation: formData.fromLocation,
+        toLocation: [...formData.toLocation],
+        UOM: "KM",
+        TotalKM: parseFloat(formData.TotalKM),
+        Rate: parseFloat(formData.Rate),
+        BillAmount: newBillAmount,
+        Remark: formData.Remark,
+        VehicleType: formData.VehicleType,
+        VehicleNo: formData.VehicleNo,
+      };
+
+      setEntries((prev) => [...prev, newEntry]);
+
+      // Reset form fields
+      setFormData((prev) => ({
+        ...prev,
+        IssueDate: "",
+        fromLocation: "",
+        toLocation: [],
+        TotalKM: "",
+        BillAmount: "",
+        Remark: "",
+      }));
+
+      setErrors({});
+      toast.success("Travel entry added and saved to database successfully!");
+    } catch (error) {
+      console.error("Error submitting form:", error);
+      let errorMessage = "Failed to add travel entry to database";
+      if (error.response) {
+        errorMessage += `: ${error.response.data?.message || error.response.statusText}`;
+      } else if (error.request) {
+        errorMessage += ": No response from server. Is the backend running at https://localhost:1234?";
+      } else {
+        errorMessage += `: ${error.message}`;
+      }
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  },
+  [formData, entries, validateForm, headExists]
+);
+```
+
+**Detailed Explanation:**
+- **useCallback**: Memoizes, depends on formData, entries, etc.
+- **Prevent Default**: Stops form reload.
+- **Validation**: Calls validateForm, checks locations. Exits if invalid.
+- **Calculations**: New BillAmount, sum existing, total.
+- **Payloads**: Header (overall record), Detail (single entry). Many fields null (likely backend defaults).
+- **Logic**:
+  - If no head: POST PetrolHead.
+  - Always POST PetrolDetails.
+  - If head exists: PUT update BillAmount.
+- **Local Update**: Adds to entries, resets partial form, clears errors, toast success.
+- **Error**: Detailed message (response/no response), toast.
+- **Finally**: Stop loading.
+- **Purpose**: Saves data to backend (PetrolHead for header, PetrolDetails for lines). Updates local state for immediate UI feedback.
+
+---
+
+### 17. Reset Form Logic
+**Separated Code:**
+```javascript
+// Reset form
+const handleReset = useCallback(() => {
+  if (entries.length > 0) {
+    if (!window.confirm("This will clear all entries. Are you sure?")) {
+      return;
+    }
+  }
+
+  setFormData((prev) => ({
+    ...prev,
+    VehicleType: "",
+    VehicleNo: "",
+    IssueDate: "",
+    fromLocation: "",
+    toLocation: [],
+    TotalKM: "",
+    Rate: "",
+    BillAmount: "",
+    Remark: "",
+  }));
+
+  setEntries([]);
+  setErrors({});
+  setTableSearchQuery("");
+  setHeadExists(false);
+  toast.success("Form reset successfully");
+}, [entries.length]);
+```
+
+**Detailed Explanation:**
+- **useCallback**: Memoizes, depends on entries.length.
+- **Confirm**: If entries exist, asks confirmation.
+- **Reset**: Clears specific form fields, entries, errors, search, headExists.
+- **Toast**: Success message.
+- **Purpose**: Clears form for new input. No backend delete (local only).
+
+---
+
+### 18. Delete Entry Logic
+**Separated Code:**
+```javascript
+// Delete entry
+const handleDelete = useCallback(
+  async (srNo) => {
+    if (window.confirm("Are you sure you want to delete this entry?")) {
+      try {
+        const entryToDelete = entries.find((entry) => entry.srNo === srNo);
+        if (!entryToDelete) {
+          throw new Error("Entry not found");
+        }
+
+        // Delete from PetrolDetails
+        const deleteResponse = await axios.delete(`https://localhost:1234/api/PetrolDetails/${formData.IssueId}`);
+        if (deleteResponse.status !== 200) {
+          throw new Error(`Unexpected delete response status: ${deleteResponse.status}`);
+        }
+
+        // Update local entries
+        const updatedEntries = entries.filter((entry) => entry.srNo !== srNo);
+        const newTotalBillAmount = updatedEntries.reduce(
+          (acc, entry) => acc + (parseFloat(entry.BillAmount) || 0),
+          0
+        ).toFixed(2);
+
+        // Update PetrolHead BillAmount
+        if (updatedEntries.length > 0) {
+          const updateResponse = await axios.put(
+            `https://localhost:1234/api/PetrolHead/${formData.IssueId}`,
+            { BillAmount: parseFloat(newTotalBillAmount) },
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          );
+          if (updateResponse.status !== 200) {
+            throw new Error(`Unexpected update response status: ${updateResponse.status}`);
+          }
+        } else {
+          // If no entries remain, optionally delete PetrolHead
+          await axios.delete(`https://localhost:1234/api/PetrolHead/${formData.IssueId}`);
+          setHeadExists(false);
+        }
+
+        setEntries(updatedEntries);
+        setFormData((prev) => ({ ...prev, BillAmount: newTotalBillAmount }));
+        toast.success("Entry deleted successfully");
+      } catch (error) {
+        console.error("Error deleting entry:", error);
+        toast.error(`Failed to delete entry: ${error.message}`);
+      }
+    }
+  },
+  [entries, formData.IssueId]
+);
+```
+
+**Detailed Explanation:**
+- **useCallback**: Memoizes, depends on entries and IssueId.
+- **Confirm**: Asks user.
+- **Find Entry**: Throws if not found.
+- **Delete Details**: DELETE to PetrolDetails (note: deletes all for IssueId? Seems bug - should be per SrNo?).
+- **Update Local**: Filters entries, recalcs total BillAmount.
+- **Update Head**: If entries remain, PUT new total. If none, DELETE head, set headExists false.
+- **Toast**: Success/error.
+- **Purpose**: Removes entry from backend and local table, updates totals.
+
+**Note**: The DELETE API deletes all details for IssueId, not specific SrNo. This might be a bug if multiple details exist.
+
+---
+
+### 19. Export to Excel Logic
+**Separated Code:**
+```javascript
+// Export to Excel
+const handleExportExcel = useCallback(() => {
+  if (entries.length === 0) {
+    toast.error("No entries to export");
+    return;
+  }
+
+  try {
+    const excelData = entries.map((entry) => ({
+      "Sr No": entry.srNo,
+      Date: new Date(entry.IssueDate).toLocaleDateString(),
+      "Route (Remark1)": entry.Remark1,
+      UOM: entry.UOM,
+      "Distance KM": entry.TotalKM,
+      Rate: entry.Rate,
+      BillAmount: entry.BillAmount,
+      Remark: entry.Remark,
+      "Vehicle Type": VEHICLE_TYPES[entry.VehicleType]?.label || entry.VehicleType,
+      "Vehicle No": entry.VehicleNo || "",
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Travel Entries");
+
+    const excelBuffer = XLSX.write(workbook, {
+      bookType: "xlsx",
+      type: "array",
+    });
+
+    const blob = new Blob([excelBuffer], { type: "application/octet-stream" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `travel_expenses_${new Date().toISOString().split("T")[0]}.xlsx`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+
+    toast.success("Data exported to Excel successfully");
+  } catch (error) {
+    console.error("Export error:", error);
+    toast.error("Failed to export data to Excel");
+  }
+}, [entries]);
+```
+
+**Detailed Explanation:**
+- **useCallback**: Memoizes, depends on entries.
+- **Check**: If no entries, error toast.
+- **Map Data**: Transforms entries to flat object for Excel (formats dates, looks up vehicle label).
+- **XLSX Utils**: Creates sheet from data, new workbook, appends sheet.
+- **Write**: Generates buffer as XLSX.
+- **Download**: Creates Blob, URL, <a> link, clicks to download, revokes URL.
+- **Toast**: Success/error.
+- **Purpose**: Exports table data to Excel file with dynamic filename.
+
+---
+
+### 20. Google Maps Integration Logic
+**Separated Code:**
+```javascript
+// Open in Google Maps
+const handleOpenInGoogleMaps = useCallback(() => {
+  if (!formData.fromLocation || formData.toLocation.length === 0) {
+    toast.error("Please select both From and To locations!");
+    return;
+  }
+
+  const origin = encodeURIComponent(formData.fromLocation);
+  const destination = encodeURIComponent(formData.toLocation[formData.toLocation.length - 1]);
+  const waypoints = formData.toLocation.slice(0, -1).map(encodeURIComponent).join("|");
+
+  const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints ? `&waypoints=${waypoints}` : ""}&travelmode=driving`;
+
+  window.open(url, "_blank");
+  toast.info("Opened Google Maps. Please check the route and enter the distance manually.");
+}, [formData.fromLocation, formData.toLocation]);
+
+// Open map for entry
+const handleOpenEntryMap = useCallback((entry) => {
+  if (!entry.fromLocation || !entry.toLocation?.length) {
+    toast.error("No valid locations available for this entry!");
+    return;
+  }
+
+  const origin = encodeURIComponent(entry.fromLocation);
+  const destination = encodeURIComponent(entry.toLocation[entry.toLocation.length - 1]);
+  const waypoints = entry.toLocation.slice(0, -1).map(encodeURIComponent).join("|");
+
+  const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints ? `&waypoints=${waypoints}` : ""}&travelmode=driving`;
+
+  window.open(url, "_blank");
+  toast.info("Opened Google Maps for this entry.");
+}, []);
+```
+
+**Detailed Explanation:**
+- **handleOpenInGoogleMaps**: For form locations. Checks if set. Encodes origin (from), destination (last to), waypoints (other to's joined by |). Builds Google Maps URL with driving mode. Opens in new tab, toast info.
+- **handleOpenEntryMap**: Similar, but for table entry. Uses entry's from/to.
+- **Purpose**: Opens Google Maps for route visualization. User manually enters distance (no API integration for auto-distance). Supports multi-waypoints.
+
+---
+
+### 21. Error Message Component
+**Separated Code:**
+```javascript
+// Error display component
+const ErrorMessage = ({ fieldName }) => {
+  if (!errors[fieldName]) return null;
+  return <div className="invalid-feedback">{errors[fieldName]}</div>;
+};
+```
+
+**Detailed Explanation:**
+- **Functional Component**: Takes fieldName, returns Bootstrap invalid-feedback div if error exists.
+- **Purpose**: Reusable for displaying errors under form fields.
+
+---
+
+### 22. JSX Render Structure
+**Separated Code:** (This is the return statement - too long to paste fully, but key parts:)
+```javascript
+return (
+  <>
+    <ToastContainer ... />
+
+    <TravelEntryNav />
+
+    <div className="container-fluid ...">
+      {/* Header */}
+      <div className="row mb-2">...</div>
+
+      {/* Form Card */}
+      <div className="card ...">
+        <div className="card-body ...">
+          <form onSubmit={handleSubmit}>
+            {/* Period & Vehicle */}
+            <div className="mb-3">...</div>
+            {/* Employee Info */}
+            <div className="row mb-2">...</div>
+            {/* Travel Details */}
+            <div className="mb-2">...</div>
+            {/* Distance & Cost */}
+            <div className="mb-2">...</div>
+            {/* Buttons */}
+            <div className="row">...</div>
+          </form>
+        </div>
+      </div>
+
+      {/* Table Card */}
+      <div className="card ...">
+        <div className="card-body ...">
+          <div className="d-flex ...">...</div>
+          <div className="table-responsive">
+            <table className="table ...">
+              <thead>...</thead>
+              <tbody>
+                {filteredEntries.map((entry) => (
+                  <tr key={entry.srNo}>...</tr>
+                ))}
+                {filteredEntries.length === 0 && <tr>...</tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </>
+);
+```
+
+**Detailed Explanation:**
+- **ToastContainer**: Global for toasts.
+- **Nav**: Imported navigation.
+- **Form**: Structured in sections (period, employee, travel, cost). Uses Bootstrap rows/cols. Inputs bound to formData, onChange=handleChange. Dropdowns as tables with search.
+- **Table**: Responsive, with search/export. Maps filteredEntries, clickable locations, map/delete buttons. Empty state message.
+- **Purpose**: Renders UI. Conditional rendering (e.g., loading, errors, dropdowns).
+
+---
+
+### Final Notes
+- **Overall Flow**: Component mounts -> Fetches locations/employee -> Auto-sets dates/IssueId -> User fills form -> Validates -> Submits to backend -> Updates table.
+- **Dependencies**: Backend at localhost:1234 (assumed to handle PetrolHead/Details).
+- **Improvements**: Delete API might need per-entry ID. Add edit entry. Use secure API (HTTPS in prod).
+If you need more details or modifications, let me know!### Introduction to the Code
+This is a React component named `Conveyance_Allowance` that implements a form for managing conveyance (travel) allowances. It allows employees to log travel entries, calculate costs based on vehicle type and distance, fetch locations and employee data from APIs, validate inputs, save data to a backend, display entries in a table, and export to Excel. It uses libraries like Axios for API calls, XLSX for Excel export, React-Toastify for notifications, and Bootstrap for styling.
+
+The code is structured as a functional component with hooks (useState, useEffect, useCallback, useMemo, useRef). I'll break it down into logical sections, providing:
+- **Separated Code**: The relevant code snippet for that logic.
+- **Detailed Explanation**: Step-by-step breakdown of what the code does, why it's used, and how it works.
+
+Sections are divided based on key functionalities as per your request (e.g., location fetch, Google Maps, etc.), plus other major logics for completeness.
+
+---
+
+### 1. Imports and Constants
+**Separated Code:**
+```javascript
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import axios from "axios";
+import * as XLSX from "xlsx";
+import "bootstrap/dist/css/bootstrap.min.css";
+import "../Travel_Entry_CSS/Conveyance_Allowance.css";
+import TravelEntryNav from "./TravelEntryNav";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+
+// Vehicle types configuration
+const VEHICLE_TYPES = {
+  "four-wheeler": { label: "Four Wheeler", Rate: 10 },
+  "two-wheeler": { label: "Two Wheeler", Rate: 5 },
+  "public-transport": { label: "Public Transport", Rate: 3 },
+  other: { label: "Other", Rate: 8 },
+};
+
+// Form validation rules
+const VALIDATION_RULES = {
+  FromDate: { required: false },
+  ToDate: { required: false },
+  VehicleType: { required: true },
+  Emp_Id: { required: true },
+  employeeName: { required: true },
+  Dept_Name: { required: true },
+  IssueDate: { required: true },
+  fromLocation: { required: true },
+  toLocation: { required: true },
+  TotalKM: { required: true, min: 0.1 },
+  Rate: { required: true, min: 0.1 },
+  Remark: { required: false },
+};
+```
+
+**Detailed Explanation:**
+- **Imports**: 
+  - React hooks (useState for state, useEffect for side effects like API calls, useCallback for memoized functions, useMemo for memoized values, useRef for DOM references).
+  - Axios: For making HTTP requests to the backend API (e.g., GET/POST/PUT/DELETE).
+  - XLSX: Library for generating Excel files from data.
+  - Bootstrap CSS: For styling the UI (grids, forms, tables).
+  - Custom CSS: Specific styles for this component.
+  - TravelEntryNav: A navigation component (likely a sidebar or header).
+  - React-Toastify: For displaying toast notifications (success/error messages).
+- **Constants**:
+  - `VEHICLE_TYPES`: An object defining vehicle options with labels and rates (in ₹ per KM). Used to populate a dropdown and auto-set rates.
+  - `VALIDATION_RULES`: Defines rules for form fields (required or not, min values). This is used in validation logic to check user inputs before submission.
+- **Purpose**: Sets up the foundation. Constants are static configurations to avoid hardcoding values in the code, making it easier to maintain (e.g., change rates without editing multiple places).
+
+---
+
+### 2. State Management
+**Separated Code:**
+```javascript
+const [formData, setFormData] = useState({
+  FromDate: "",
+  ToDate: "",
+  VehicleType: "",
+  VehicleNo: "",
+  Emp_Id: "",
+  employeeName: "",
+  Dept_Name: "",
+  IssueId: "new",
+  IssueDate: "",
+  fromLocation: "",
+  toLocation: [],
+  TotalKM: "",
+  Rate: "",
+  BillAmount: "",
+  Remark: "",
+});
+
+const [entries, setEntries] = useState([]);
+const [errors, setErrors] = useState({});
+const [isLoading, setIsLoading] = useState(false);
+const [locations, setLocations] = useState([]);
+const [isLoadingLocations, setIsLoadingLocations] = useState(false);
+const [showLocationDropdown, setShowLocationDropdown] = useState(null);
+const [fromLocationSearchQuery, setFromLocationSearchQuery] = useState("");
+const [toLocationSearchQuery, setToLocationSearchQuery] = useState("");
+const [tableSearchQuery, setTableSearchQuery] = useState("");
+const [loginName] = useState(localStorage.getItem("username") || "");
+const [headExists, setHeadExists] = useState(false);
+
+const fromLocationRef = useRef(null);
+const toLocationRef = useRef(null);
+const dropdownRef = useRef(null);
+```
+
+**Detailed Explanation:**
+- **formData**: Holds all form field values (e.g., dates, locations, distances). Initialized empty or with defaults. Updated via `setFormData` on user input.
+- **entries**: Array of saved travel entries (displayed in table). Updated when adding/deleting entries.
+- **errors**: Object for validation errors (e.g., { FromDate: "Required" }). Displayed under fields.
+- **isLoading**: Boolean to show loading spinner during API calls (prevents multiple submits).
+- **locations**: Array of location data fetched from API, used in dropdowns.
+- **isLoadingLocations**: Loading state for location fetch.
+- **showLocationDropdown**: Controls which dropdown (from/to) is visible (null hides both).
+- **Search Queries**: For filtering locations in dropdowns and entries in table.
+- **loginName**: Fetched from localStorage (user's username for employee data).
+- **headExists**: Flag if a "PetrolHead" record exists in backend (for create/update logic).
+- **Refs**: DOM references for inputs and dropdown (used to detect clicks outside for closing dropdowns).
+- **Purpose**: Manages component state reactively. React re-renders on state changes. useRef is used for non-re-rendering values (e.g., DOM elements).
+
+---
+
+### 3. Memoized Values (Rates and Filters)
+**Separated Code:**
+```javascript
+// Memoized vehicle Rates
+const Rates = useMemo(() => {
+  const RateMap = {};
+  Object.keys(VEHICLE_TYPES).forEach((key) => {
+    RateMap[key] = VEHICLE_TYPES[key].Rate;
+  });
+  return RateMap;
+}, []);
+
+// Filter locations for dropdown
+const filteredFromLocations = useMemo(() => {
+  if (!fromLocationSearchQuery) return locations;
+  return locations.filter((loc) =>
+    loc?.Loc_Name?.toLowerCase().includes(fromLocationSearchQuery.toLowerCase())
+  );
+}, [locations, fromLocationSearchQuery]);
+
+const filteredToLocations = useMemo(() => {
+  if (!toLocationSearchQuery) return locations;
+  return locations.filter((loc) =>
+    loc?.Loc_Name?.toLowerCase().includes(toLocationSearchQuery.toLowerCase())
+  );
+}, [locations, toLocationSearchQuery]);
+
+// Filter entries for table search
+const filteredEntries = useMemo(() => {
+  if (!tableSearchQuery) return entries;
+  return entries.filter((entry) => {
+    const description = entry.Remark1 || "";
+    return description.toLowerCase().includes(tableSearchQuery.toLowerCase());
+  });
+}, [entries, tableSearchQuery]);
+```
+
+**Detailed Explanation:**
+- **Rates**: Memoized object mapping vehicle types to rates (e.g., { "four-wheeler": 10 }). Computed once (empty dependency array) from VEHICLE_TYPES. Avoids recomputing on every render.
+- **filteredFromLocations / filteredToLocations**: Memoized arrays filtering locations based on search queries. Case-insensitive search on Loc_Name. Recomputes only when locations or query change.
+- **filteredEntries**: Memoized filtered table entries based on table search query. Searches in "Remark1" (route description).
+- **Purpose**: useMemo optimizes performance by caching computations. Prevents unnecessary re-filters on every render, especially useful for large lists.
+
+---
+
+### 4. Location Fetching Logic
+**Separated Code:**
+```javascript
+// Fetch location data from API
+useEffect(() => {
+  const fetchLocationData = async () => {
+    setIsLoadingLocations(true);
+    try {
+      const response = await axios.get("https://localhost:1234/api/LocationMaster", {
+        headers: { "Content-Type": "application/json" },
+      });
+      if (Array.isArray(response.data)) {
+        const validLocations = response.data.filter(
+          (loc) => loc.Loc_Id && loc.Loc_Name && typeof loc.Loc_Name === "string"
+        );
+        if (validLocations.length === 0) {
+          throw new Error("No valid locations found");
+        }
+        setLocations(validLocations);
+        setErrors((prev) => ({ ...prev, locationFetch: undefined }));
+      } else {
+        throw new Error("Invalid location data format");
+      }
+    } catch (error) {
+      console.error("Error fetching location data:", error);
+      setErrors((prev) => ({
+        ...prev,
+        locationFetch: (
+          <span>
+            Failed to fetch location data.{" "}
+            <button className="btn btn-link p-0" onClick={() => fetchLocationData()}>
+              Retry
+            </button>
+          </span>
+        ),
+      }));
+      toast.error("Failed to fetch location data");
+    } finally {
+      setIsLoadingLocations(false);
+    }
+  };
+  fetchLocationData();
+}, []);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs once on component mount (empty dependency). Fetches locations from backend API.
+- **Async Function**: Uses Axios GET to "https://localhost:1234/api/LocationMaster".
+- **Validation**: Checks if response is array, filters valid locations (with Loc_Id, Loc_Name as string). Throws errors if invalid.
+- **Success**: Sets locations state, clears error.
+- **Error Handling**: Logs error, sets error message with retry button, shows toast.
+- **Finally**: Stops loading state.
+- **Purpose**: Populates location dropdowns. Retry button allows re-fetch without reload. Localhost suggests development backend (e.g., Node.js/Express).
+
+---
+
+### 5. Employee Data Fetching Logic
+**Separated Code:**
+```javascript
+// Fetch employee data
+useEffect(() => {
+  const fetchedEmployeeData = async () => {
+    if (!loginName.trim()) {
+      setFormData((prev) => ({
+        ...prev,
+        Dept_Name: "",
+        Emp_Id: "",
+        employeeName: "",
+      }));
+      return;
+    }
+    try {
+      const response = await axios.get(
+        `https://localhost:1234/api/EmployeePortal/${loginName}`,
+        {
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+      const employees = response.data;
+      if (employees.length > 0) {
+        const employee = employees[0];
+        setFormData((prev) => ({
+          ...prev,
+          Dept_Name: employee.Dept_Name || "",
+          Emp_Id: employee.Emp_Id || "",
+          employeeName: loginName,
+        }));
+      } else {
+        setFormData((prev) => ({
+          ...prev,
+          Dept_Name: "",
+          Emp_Id: "",
+          employeeName: "",
+        }));
+        toast.error("No employee data found for this user");
+      }
+    } catch (err) {
+      console.error("Error fetching employee data:", err);
+      toast.error("Failed to fetch employee data. Please try again.");
+      setFormData((prev) => ({
+        ...prev,
+        Dept_Name: "",
+        Emp_Id: "",
+        employeeName: "",
+      }));
+    }
+  };
+  fetchedEmployeeData();
+}, [loginName]);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs when loginName changes (from localStorage).
+- **Check**: If no loginName, clears employee fields.
+- **Async Fetch**: GET to API with loginName in URL.
+- **Success**: Takes first employee, updates formData with Dept_Name, Emp_Id, employeeName.
+- **No Data**: Clears fields, shows toast error.
+- **Error**: Logs, shows toast, clears fields.
+- **Purpose**: Auto-fills employee info based on logged-in user. Assumes API returns array of employees.
+
+---
+
+### 6. Date Handling and Auto-Set From/To Dates
+**Separated Code:**
+```javascript
+// Auto-set FromDate and ToDate based on current date (26th to 25th cycle)
+useEffect(() => {
+  const today = new Date();
+  const day = today.getDate();
+  let FromDateStr, ToDateStr;
+
+  if (day <= 26) {
+    FromDateStr = new Date(today.getFullYear(), today.getMonth() - 1, 27)
+      .toISOString()
+      .slice(0, 10);
+    ToDateStr = new Date(today.getFullYear(), today.getMonth(), 26)
+      .toISOString()
+      .slice(0, 10);
+  } else {
+    FromDateStr = new Date(today.getFullYear(), today.getMonth(), 27)
+      .toISOString()
+      .slice(0, 10);
+    ToDateStr = new Date(today.getFullYear(), today.getMonth() + 1, 26)
+      .toISOString()
+      .slice(0, 10);
+  }
+
+  setFormData((prev) => ({ ...prev, FromDate: FromDateStr, ToDate: ToDateStr }));
+}, []);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs once on mount.
+- **Logic**: Gets current date. If day <=26, sets FromDate to last month's 27th, ToDate to this month's 26th. Else, FromDate this month's 27th, ToDate next month's 26th.
+- **Format**: Converts to YYYY-MM-DD using toISOString().slice(0,10).
+- **Update**: Sets formData.
+- **Purpose**: Auto-sets billing cycle (e.g., for monthly allowances from 27th to 26th). Custom business rule.
+
+---
+
+### 7. Auto-Generate IssueId
+**Separated Code:**
+```javascript
+// Auto-generate IssueId based on ToDate month/year and Emp_Id
+useEffect(() => {
+  if (formData.Emp_Id && formData.ToDate) {
+    const yearMonth = formData.ToDate.slice(0, 7).replace("-", "");
+    const newIssueId = `${yearMonth}${formData.Emp_Id}`;
+    setFormData((prev) => ({ ...prev, IssueId: newIssueId }));
+  } else {
+    setFormData((prev) => ({ ...prev, IssueId: "new" }));
+  }
+}, [formData.Emp_Id, formData.ToDate]);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs when Emp_Id or ToDate changes.
+- **Logic**: If both present, takes ToDate's YYYY-MM (e.g., "2025-09" -> "202509"), appends Emp_Id (e.g., "202509EMP123").
+- **Else**: Sets to "new".
+- **Purpose**: Generates unique ID for travel record (e.g., for backend primary key). Combines date and employee for uniqueness.
+
+---
+
+### 8. Fetch Head and Details (Existing Data)
+**Separated Code:**
+```javascript
+// Fetch head and details when IssueId is set
+useEffect(() => {
+  const fetchHeadAndDetails = async () => {
+    if (formData.IssueId === "new") {
+      setEntries([]);
+      setHeadExists(false);
+      return;
+    }
+
+    // Fetch head
+    try {
+      const headResponse = await axios.get(`https://localhost:1234/api/PetrolHead/${formData.IssueId}`);
+      setFormData((prev) => ({
+        ...prev,
+        VehicleType: headResponse.data.VehicleType || "",
+        VehicleNo: headResponse.data.VehicleNo || "",
+        FromDate: headResponse.data.FromDate || prev.FromDate,
+        ToDate: headResponse.data.ToDate || prev.ToDate,
+        BillAmount: headResponse.data.BillAmount || "",
+      }));
+      setHeadExists(true);
+    } catch (err) {
+      if (err.response?.status === 404) {
+        setHeadExists(false);
+      } else {
+        console.error("Error fetching PetrolHead:", err);
+        toast.error("Failed to fetch conveyance header data");
+      }
+    }
+
+    // Fetch details
+    try {
+      const detailsResponse = await axios.get(`https://localhost:1234/api/PetrolDetails/${formData.IssueId}`);
+      const loadedEntries = detailsResponse.data.map((detail, index) => ({
+        srNo: detail.SrNo || index + 1,
+        IssueDate: detail.IssueDate,
+        Remark1: detail.Remark1 || `${detail.fromLocation} to ${detail.toLocation}`,
+        fromLocation: detail.fromLocation || "",
+        toLocation: detail.toLocation ? detail.toLocation.split(", ") : [],
+        UOM: detail.UOM || "KM",
+        TotalKM: detail.Quantity,
+        Rate: detail.Rate,
+        BillAmount: detail.TotalAmount,
+        Remark: detail.Remark || "",
+        VehicleType: detail.VehicleType || formData.VehicleType,
+        VehicleNo: detail.VehicleNo || formData.VehicleNo,
+      }));
+      setEntries(loadedEntries);
+    } catch (err) {
+      console.error("Error fetching PetrolDetails:", err);
+      setEntries([]);
+      toast.error("Failed to fetch conveyance details");
+    }
+  };
+
+  fetchHeadAndDetails();
+}, [formData.IssueId]);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs when IssueId changes.
+- **If "new"**: Clears entries, sets headExists false.
+- **Fetch Head**: GET to PetrolHead API. Updates formData with existing data, sets headExists true. Handles 404 (no head) silently.
+- **Fetch Details**: GET to PetrolDetails. Maps response to entries format (e.g., splits toLocation string to array).
+- **Error**: Clears entries, shows toast.
+- **Purpose**: Loads existing travel data for editing (header for overall, details for table rows).
+
+---
+
+### 9. Dropdown Close on Outside Click
+**Separated Code:**
+```javascript
+// Close dropdown when clicking outside
+useEffect(() => {
+  const handleClickOutside = (event) => {
+    if (
+      fromLocationRef.current &&
+      !fromLocationRef.current.contains(event.target) &&
+      toLocationRef.current &&
+      !toLocationRef.current.contains(event.target) &&
+      dropdownRef.current &&
+      !dropdownRef.current.contains(event.target)
+    ) {
+      setShowLocationDropdown(null);
+      setFromLocationSearchQuery("");
+      setToLocationSearchQuery("");
+    }
+  };
+  document.addEventListener("mousedown", handleClickOutside);
+  return () => {
+    document.removeEventListener("mousedown", handleClickOutside);
+  };
+}, []);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs once, adds event listener for mousedown on document.
+- **Logic**: Checks if click is outside refs (from/to inputs, dropdown). If yes, hides dropdown, clears searches.
+- **Cleanup**: Removes listener on unmount.
+- **Purpose**: UX improvement - closes dropdown automatically like native select.
+
+---
+
+### 10. Form Validation Logic
+**Separated Code:**
+```javascript
+// Form validation
+const validateForm = useCallback((data) => {
+  const newErrors = {};
+
+  Object.keys(VALIDATION_RULES).forEach((field) => {
+    const rule = VALIDATION_RULES[field];
+    const value = data[field];
+
+    if (rule.required) {
+      if (field === "toLocation") {
+        if (!Array.isArray(value) || value.length === 0) {
+          newErrors[field] = `${field
+            .replace(/([A-Z])/g, " $1")
+            .replace(/^./, (str) => str.toUpperCase())} is required`;
+        }
+      } else if (!value || value.toString().trim() === "") {
+        newErrors[field] = `${field
+          .replace(/([A-Z])/g, " $1")
+          .replace(/^./, (str) => str.toUpperCase())} is required`;
+      }
+    }
+
+    if (rule.min && value && !isNaN(value) && parseFloat(value) < rule.min) {
+      newErrors[field] = `${field
+        .replace(/([A-Z])/g, " $1")
+        .replace(/^./, (str) => str.toUpperCase())} must be at least ${rule.min}`;
+    }
+  });
+
+  if (data.FromDate && data.ToDate && new Date(data.FromDate) > new Date(data.ToDate)) {
+    newErrors.ToDate = "To date must be after from date";
+  }
+
+  if (data.IssueDate && data.FromDate && data.ToDate) {
+    const IssueDate = new Date(data.IssueDate);
+    const FromDate = new Date(data.FromDate);
+    const ToDate = new Date(data.ToDate);
+
+    if (IssueDate < FromDate || IssueDate > ToDate) {
+      newErrors.IssueDate = "Travel date must be within the from and to date range";
+    }
+  }
+
+  if (data.fromLocation && data.toLocation.length > 0 && data.toLocation.includes(data.fromLocation)) {
+    newErrors.toLocation = "To location cannot be the same as from location";
+  }
+
+  setErrors(newErrors);
+  return Object.keys(newErrors).length === 0;
+}, []);
+```
+
+**Detailed Explanation:**
+- **useCallback**: Memoizes function (empty dependency).
+- **Loop Rules**: For each field in VALIDATION_RULES, checks required (handles toLocation as array), min value.
+- **Additional Checks**: FromDate <= ToDate, IssueDate within range, fromLocation != toLocation.
+- **Error Formatting**: CamelCase to human-readable (e.g., "FromDate" -> "From Date").
+- **Set Errors**: Updates state, returns true if no errors.
+- **Purpose**: Ensures valid data before submit. Custom rules for business logic (e.g., date ranges).
+
+---
+
+### 11. Input Change Handler
+**Separated Code:**
+```javascript
+// Handle input change
+const handleChange = useCallback(
+  (e) => {
+    const { name, value } = e.target;
+    let newValue = value;
+
+    if (["TotalKM", "Rate"].includes(name)) {
+      newValue = value === "" ? "" : Math.max(0, parseFloat(value)) || "";
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      [name]: newValue,
+    }));
+
+    if (errors[name]) {
+      setErrors((prev) => ({
+        ...prev,
+        [name]: undefined,
+      }));
+    }
+
+    if (name === "fromLocation") {
+      setFromLocationSearchQuery(value);
+    } else if (name === "toLocation") {
+      setToLocationSearchQuery(value);
+    }
+  },
+  [errors]
+);
+```
+
+**Detailed Explanation:**
+- **useCallback**: Memoizes, depends on errors.
+- **Logic**: Gets name/value from event. For numeric fields, ensures >=0 or empty.
+- **Update**: Sets formData, clears error for that field.
+- **Search**: Updates search queries for location fields.
+- **Purpose**: Handles all form inputs uniformly. Clears errors on change for real-time feedback.
+
+---
+
+### 12. Location Selection Handlers
+**Separated Code:**
+```javascript
+// Handle location input click
+const handleLocationInputClick = (field) => {
+  setShowLocationDropdown(field);
+  if (field === "fromLocation") {
+    setFromLocationSearchQuery("");
+    setToLocationSearchQuery("");
+  } else {
+    setToLocationSearchQuery("");
+    setFromLocationSearchQuery("");
+  }
+};
+
+// Handle location selection
+const handleLocationSelect = (locName, field) => {
+  if (field === "fromLocation") {
+    setFormData((prev) => ({
+      ...prev,
+      fromLocation: locName,
+    }));
+    setShowLocationDropdown(null);
+  } else {
+    setFormData((prev) => {
+      const currentLocations = prev.toLocation;
+      let newLocations;
+      if (currentLocations.includes(locName)) {
+        newLocations = currentLocations.filter((loc) => loc !== locName);
+      } else {
+        newLocations = [...currentLocations, locName];
+      }
+      return { ...prev, toLocation: newLocations };
+    });
+  }
+
+  setErrors((prev) => ({
+    ...prev,
+    [field]: undefined,
+  }));
+};
+
+// Handle location selection from table
+const handleTableLocationSelect = (location, field) => {
+  if (!location) return;
+  if (field === "fromLocation") {
+    setFormData((prev) => ({
+      ...prev,
+      fromLocation: location,
+    }));
+  } else {
+    setFormData((prev) => {
+      const currentLocations = prev.toLocation;
+      let newLocations;
+      if (currentLocations.includes(location)) {
+        newLocations = currentLocations.filter((loc) => loc !== location);
+      } else {
+        newLocations = [...currentLocations, location];
+      }
+      return { ...prev, toLocation: newLocations };
+    });
+  }
+
+  setErrors((prev) => ({
+    ...prev,
+    [field]: undefined,
+  }));
+  toast.success(`Selected ${location} for ${field === "fromLocation" ? "From Location" : "To Location"}`);
+};
+```
+
+**Detailed Explanation:**
+- **handleLocationInputClick**: Shows dropdown for field, clears searches.
+- **handleLocationSelect**: For from: sets single value, hides dropdown. For to: toggles in array (add/remove). Clears error.
+- **handleTableLocationSelect**: Similar to above, but for clicking locations in table. Shows toast.
+- **Purpose**: Manages location dropdown interactions. ToLocation is multi-select (array), From is single.
+
+---
+
+### 13. Table Search Handler
+**Separated Code:**
+```javascript
+// Handle table search
+const handleTableSearchChange = (e) => {
+  setTableSearchQuery(e.target.value);
+};
+```
+
+**Detailed Explanation:**
+- **Simple Setter**: Updates tableSearchQuery on input change.
+- **Purpose**: Filters table entries in real-time (used in filteredEntries memo).
+
+---
+
+### 14. Auto-Set Rate Based on Vehicle Type
+**Separated Code:**
+```javascript
+// Set Rate based on vehicle type
+useEffect(() => {
+  if (formData.VehicleType) {
+    setFormData((prev) => ({
+      ...prev,
+      Rate: Rates[formData.VehicleType] || "",
+    }));
+  }
+}, [formData.VehicleType, Rates]);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs when VehicleType or Rates change.
+- **Logic**: Looks up rate from memoized Rates, sets in formData.
+- **Purpose**: Auto-populates Rate when vehicle selected (e.g., four-wheeler -> 10).
+
+---
+
+### 15. Auto-Calculate BillAmount
+**Separated Code:**
+```javascript
+// Auto calculate BillAmount
+useEffect(() => {
+  const { TotalKM, Rate } = formData;
+  if (TotalKM && Rate && !isNaN(TotalKM) && !isNaN(Rate)) {
+    const calculatedBillAmount = (parseFloat(TotalKM) * parseFloat(Rate)).toFixed(2);
+    setFormData((prev) => ({ ...prev, BillAmount: calculatedBillAmount }));
+  } else {
+    setFormData((prev) => ({ ...prev, BillAmount: "" }));
+  }
+}, [formData.TotalKM, formData.Rate]);
+```
+
+**Detailed Explanation:**
+- **useEffect**: Runs on TotalKM or Rate change.
+- **Logic**: If both valid numbers, calculates TotalKM * Rate (fixed to 2 decimals). Else, clears.
+- **Purpose**: Real-time cost calculation for user convenience.
+
+---
+
+### 16. Form Submit Logic
+**Separated Code:**
+```javascript
+// Submit form with POST requests to PetrolHead and PetrolDetails
+const handleSubmit = useCallback(
+  async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      if (!validateForm(formData)) {
+        toast.error("Please fix the validation errors before submitting");
+        return;
+      }
+
+      if (!formData.fromLocation || formData.toLocation.length === 0) {
+        toast.error("Please select both From and To locations");
+        return;
+      }
+
+      const newBillAmount = parseFloat(formData.BillAmount);
+      const currentSum = entries.reduce((acc, entry) => acc + (parseFloat(entry.BillAmount) || 0), 0);
+      const totalBillAmount = headExists ? (currentSum + newBillAmount).toFixed(2) : newBillAmount.toFixed(2);
+
+      // Prepare header payload
+      const headerPayload = {
+        IssueId: formData.IssueId,
+        IssueNo: null,
+        IssueDate: formData.IssueDate,
+        IssueTime: new Date().toLocaleTimeString(),
+        BuildingId: null,
+        SiteId: null,
+        Total: parseFloat(formData.TotalKM),
+        BillAmount: parseFloat(totalBillAmount),
+        TotalKM: parseFloat(formData.TotalKM),
+        VehicleType: formData.VehicleType,
+        VehicleNo: formData.VehicleNo || null,
+        Approved: null,
+        NonApproved: null,
+        VoucherPost: null,
+        Filepath: null,
+        EmpCode: formData.Emp_Id,
+        FromDate: formData.FromDate,
+        ToDate: formData.ToDate,
+        ApprovedBy: null,
+        ApprovedDate: null,
+        SubmittedTo: null,
+        SubmittedDate: null,
+        VoucherNo: null,
+        VoucherDate: null,
+        CostcenterId: null,
+        Costcenter: null,
+        CompanyId: null,
+        CompanyName: null,
+        ExpensesId: null,
+        ExpensesAc: null,
+        BankId: null,
+        BankName: null,
+        AccountingYear: new Date().getFullYear(),
+        Approvedtime: null,
+        Hostname: window.location.hostname,
+      };
+
+      // Prepare details payload
+      const detailPayload = {
+        IssueId: formData.IssueId,
+        IssueNo: null,
+        IssueDate: formData.IssueDate,
+        ChallanNo: null,
+        ChallanDate: null,
+        MatClassId: null,
+        MatNo: null,
+        ConversitionFactor: null,
+        ItemclassId: null,
+        ItemNo: null,
+        SrNo: entries.length + 1,
+        UOM: "KM",
+        StockInHand: null,
+        Quantity: parseFloat(formData.TotalKM),
+        MRP: null,
+        Rate: parseFloat(formData.Rate),
+        PurchaseRate: null,
+        Amount: newBillAmount,
+        PurchaseAmount: null,
+        TaxPer: null,
+        TaxAmount: null,
+        TotalAmount: newBillAmount,
+        Remark: formData.Remark || null,
+        HSNCode: null,
+        TaxSchemeId: null,
+        TaxScheme: null,
+        Filepath: null,
+        EmpCode: formData.Emp_Id,
+        Remark1: `${formData.fromLocation} to ${formData.toLocation.join(", ")}`,
+      };
+
+      console.log("Submitting detail payload:", detailPayload);
+      console.log("Header action:", headExists ? "UPDATE" : "CREATE", "with total:", totalBillAmount);
+
+      // For first entry, create PetrolHead and PetrolDetails
+      if (!headExists) {
+        const headResponse = await axios.post(
+          "https://localhost:1234/api/PetrolHead",
+          headerPayload,
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        if (headResponse.status !== 200 && headResponse.status !== 201) {
+          throw new Error(`Unexpected head response status: ${headResponse.status}`);
+        }
+        setHeadExists(true);
+      }
+
+      // Post the detail to PetrolDetails
+      const detailsResponse = await axios.post(
+        "https://localhost:1234/api/PetrolDetails",
+        detailPayload,
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (detailsResponse.status !== 200 && detailsResponse.status !== 201) {
+        throw new Error(`Unexpected details response status: ${detailsResponse.status}`);
+      }
+
+      // Update PetrolHead BillAmount if this is not the first entry
+      if (headExists) {
+        const updateResponse = await axios.put(
+          `https://localhost:1234/api/PetrolHead/${formData.IssueId}`,
+          { BillAmount: parseFloat(totalBillAmount) },
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        if (updateResponse.status !== 200) {
+          throw new Error(`Unexpected update response status: ${updateResponse.status}`);
+        }
+      }
+
+      // Add to local entries
+      const newEntry = {
+        srNo: entries.length + 1,
+        IssueDate: formData.IssueDate,
+        Remark1: `${formData.fromLocation} to ${formData.toLocation.join(", ")}`,
+        fromLocation: formData.fromLocation,
+        toLocation: [...formData.toLocation],
+        UOM: "KM",
+        TotalKM: parseFloat(formData.TotalKM),
+        Rate: parseFloat(formData.Rate),
+        BillAmount: newBillAmount,
+        Remark: formData.Remark,
+        VehicleType: formData.VehicleType,
+        VehicleNo: formData.VehicleNo,
+      };
+
+      setEntries((prev) => [...prev, newEntry]);
+
+      // Reset form fields
+      setFormData((prev) => ({
+        ...prev,
+        IssueDate: "",
+        fromLocation: "",
+        toLocation: [],
+        TotalKM: "",
+        BillAmount: "",
+        Remark: "",
+      }));
+
+      setErrors({});
+      toast.success("Travel entry added and saved to database successfully!");
+    } catch (error) {
+      console.error("Error submitting form:", error);
+      let errorMessage = "Failed to add travel entry to database";
+      if (error.response) {
+        errorMessage += `: ${error.response.data?.message || error.response.statusText}`;
+      } else if (error.request) {
+        errorMessage += ": No response from server. Is the backend running at https://localhost:1234?";
+      } else {
+        errorMessage += `: ${error.message}`;
+      }
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  },
+  [formData, entries, validateForm, headExists]
+);
+```
+
+**Detailed Explanation:**
+- **useCallback**: Memoizes, depends on formData, entries, etc.
+- **Prevent Default**: Stops form reload.
+- **Validation**: Calls validateForm, checks locations. Exits if invalid.
+- **Calculations**: New BillAmount, sum existing, total.
+- **Payloads**: Header (overall record), Detail (single entry). Many fields null (likely backend defaults).
+- **Logic**:
+  - If no head: POST PetrolHead.
+  - Always POST PetrolDetails.
+  - If head exists: PUT update BillAmount.
+- **Local Update**: Adds to entries, resets partial form, clears errors, toast success.
+- **Error**: Detailed message (response/no response), toast.
+- **Finally**: Stop loading.
+- **Purpose**: Saves data to backend (PetrolHead for header, PetrolDetails for lines). Updates local state for immediate UI feedback.
+
+---
+
+### 17. Reset Form Logic
+**Separated Code:**
+```javascript
+// Reset form
+const handleReset = useCallback(() => {
+  if (entries.length > 0) {
+    if (!window.confirm("This will clear all entries. Are you sure?")) {
+      return;
+    }
+  }
+
+  setFormData((prev) => ({
+    ...prev,
+    VehicleType: "",
+    VehicleNo: "",
+    IssueDate: "",
+    fromLocation: "",
+    toLocation: [],
+    TotalKM: "",
+    Rate: "",
+    BillAmount: "",
+    Remark: "",
+  }));
+
+  setEntries([]);
+  setErrors({});
+  setTableSearchQuery("");
+  setHeadExists(false);
+  toast.success("Form reset successfully");
+}, [entries.length]);
+```
+
+**Detailed Explanation:**
+- **useCallback**: Memoizes, depends on entries.length.
+- **Confirm**: If entries exist, asks confirmation.
+- **Reset**: Clears specific form fields, entries, errors, search, headExists.
+- **Toast**: Success message.
+- **Purpose**: Clears form for new input. No backend delete (local only).
+
+---
+
+### 18. Delete Entry Logic
+**Separated Code:**
+```javascript
+// Delete entry
+const handleDelete = useCallback(
+  async (srNo) => {
+    if (window.confirm("Are you sure you want to delete this entry?")) {
+      try {
+        const entryToDelete = entries.find((entry) => entry.srNo === srNo);
+        if (!entryToDelete) {
+          throw new Error("Entry not found");
+        }
+
+        // Delete from PetrolDetails
+        const deleteResponse = await axios.delete(`https://localhost:1234/api/PetrolDetails/${formData.IssueId}`);
+        if (deleteResponse.status !== 200) {
+          throw new Error(`Unexpected delete response status: ${deleteResponse.status}`);
+        }
+
+        // Update local entries
+        const updatedEntries = entries.filter((entry) => entry.srNo !== srNo);
+        const newTotalBillAmount = updatedEntries.reduce(
+          (acc, entry) => acc + (parseFloat(entry.BillAmount) || 0),
+          0
+        ).toFixed(2);
+
+        // Update PetrolHead BillAmount
+        if (updatedEntries.length > 0) {
+          const updateResponse = await axios.put(
+            `https://localhost:1234/api/PetrolHead/${formData.IssueId}`,
+            { BillAmount: parseFloat(newTotalBillAmount) },
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          );
+          if (updateResponse.status !== 200) {
+            throw new Error(`Unexpected update response status: ${updateResponse.status}`);
+          }
+        } else {
+          // If no entries remain, optionally delete PetrolHead
+          await axios.delete(`https://localhost:1234/api/PetrolHead/${formData.IssueId}`);
+          setHeadExists(false);
+        }
+
+        setEntries(updatedEntries);
+        setFormData((prev) => ({ ...prev, BillAmount: newTotalBillAmount }));
+        toast.success("Entry deleted successfully");
+      } catch (error) {
+        console.error("Error deleting entry:", error);
+        toast.error(`Failed to delete entry: ${error.message}`);
+      }
+    }
+  },
+  [entries, formData.IssueId]
+);
+```
+
+**Detailed Explanation:**
+- **useCallback**: Memoizes, depends on entries and IssueId.
+- **Confirm**: Asks user.
+- **Find Entry**: Throws if not found.
+- **Delete Details**: DELETE to PetrolDetails (note: deletes all for IssueId? Seems bug - should be per SrNo?).
+- **Update Local**: Filters entries, recalcs total BillAmount.
+- **Update Head**: If entries remain, PUT new total. If none, DELETE head, set headExists false.
+- **Toast**: Success/error.
+- **Purpose**: Removes entry from backend and local table, updates totals.
+
+**Note**: The DELETE API deletes all details for IssueId, not specific SrNo. This might be a bug if multiple details exist.
+
+---
+
+### 19. Export to Excel Logic
+**Separated Code:**
+```javascript
+// Export to Excel
+const handleExportExcel = useCallback(() => {
+  if (entries.length === 0) {
+    toast.error("No entries to export");
+    return;
+  }
+
+  try {
+    const excelData = entries.map((entry) => ({
+      "Sr No": entry.srNo,
+      Date: new Date(entry.IssueDate).toLocaleDateString(),
+      "Route (Remark1)": entry.Remark1,
+      UOM: entry.UOM,
+      "Distance KM": entry.TotalKM,
+      Rate: entry.Rate,
+      BillAmount: entry.BillAmount,
+      Remark: entry.Remark,
+      "Vehicle Type": VEHICLE_TYPES[entry.VehicleType]?.label || entry.VehicleType,
+      "Vehicle No": entry.VehicleNo || "",
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Travel Entries");
+
+    const excelBuffer = XLSX.write(workbook, {
+      bookType: "xlsx",
+      type: "array",
+    });
+
+    const blob = new Blob([excelBuffer], { type: "application/octet-stream" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `travel_expenses_${new Date().toISOString().split("T")[0]}.xlsx`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+
+    toast.success("Data exported to Excel successfully");
+  } catch (error) {
+    console.error("Export error:", error);
+    toast.error("Failed to export data to Excel");
+  }
+}, [entries]);
+```
+
+**Detailed Explanation:**
+- **useCallback**: Memoizes, depends on entries.
+- **Check**: If no entries, error toast.
+- **Map Data**: Transforms entries to flat object for Excel (formats dates, looks up vehicle label).
+- **XLSX Utils**: Creates sheet from data, new workbook, appends sheet.
+- **Write**: Generates buffer as XLSX.
+- **Download**: Creates Blob, URL, <a> link, clicks to download, revokes URL.
+- **Toast**: Success/error.
+- **Purpose**: Exports table data to Excel file with dynamic filename.
+
+---
+
+### 20. Google Maps Integration Logic
+**Separated Code:**
+```javascript
+// Open in Google Maps
+const handleOpenInGoogleMaps = useCallback(() => {
+  if (!formData.fromLocation || formData.toLocation.length === 0) {
+    toast.error("Please select both From and To locations!");
+    return;
+  }
+
+  const origin = encodeURIComponent(formData.fromLocation);
+  const destination = encodeURIComponent(formData.toLocation[formData.toLocation.length - 1]);
+  const waypoints = formData.toLocation.slice(0, -1).map(encodeURIComponent).join("|");
+
+  const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints ? `&waypoints=${waypoints}` : ""}&travelmode=driving`;
+
+  window.open(url, "_blank");
+  toast.info("Opened Google Maps. Please check the route and enter the distance manually.");
+}, [formData.fromLocation, formData.toLocation]);
+
+// Open map for entry
+const handleOpenEntryMap = useCallback((entry) => {
+  if (!entry.fromLocation || !entry.toLocation?.length) {
+    toast.error("No valid locations available for this entry!");
+    return;
+  }
+
+  const origin = encodeURIComponent(entry.fromLocation);
+  const destination = encodeURIComponent(entry.toLocation[entry.toLocation.length - 1]);
+  const waypoints = entry.toLocation.slice(0, -1).map(encodeURIComponent).join("|");
+
+  const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints ? `&waypoints=${waypoints}` : ""}&travelmode=driving`;
+
+  window.open(url, "_blank");
+  toast.info("Opened Google Maps for this entry.");
+}, []);
+```
+
+**Detailed Explanation:**
+- **handleOpenInGoogleMaps**: For form locations. Checks if set. Encodes origin (from), destination (last to), waypoints (other to's joined by |). Builds Google Maps URL with driving mode. Opens in new tab, toast info.
+- **handleOpenEntryMap**: Similar, but for table entry. Uses entry's from/to.
+- **Purpose**: Opens Google Maps for route visualization. User manually enters distance (no API integration for auto-distance). Supports multi-waypoints.
+
+---
+
+### 21. Error Message Component
+**Separated Code:**
+```javascript
+// Error display component
+const ErrorMessage = ({ fieldName }) => {
+  if (!errors[fieldName]) return null;
+  return <div className="invalid-feedback">{errors[fieldName]}</div>;
+};
+```
+
+**Detailed Explanation:**
+- **Functional Component**: Takes fieldName, returns Bootstrap invalid-feedback div if error exists.
+- **Purpose**: Reusable for displaying errors under form fields.
+
+---
+
+### 22. JSX Render Structure
+**Separated Code:** (This is the return statement - too long to paste fully, but key parts:)
+```javascript
+return (
+  <>
+    <ToastContainer ... />
+
+    <TravelEntryNav />
+
+    <div className="container-fluid ...">
+      {/* Header */}
+      <div className="row mb-2">...</div>
+
+      {/* Form Card */}
+      <div className="card ...">
+        <div className="card-body ...">
+          <form onSubmit={handleSubmit}>
+            {/* Period & Vehicle */}
+            <div className="mb-3">...</div>
+            {/* Employee Info */}
+            <div className="row mb-2">...</div>
+            {/* Travel Details */}
+            <div className="mb-2">...</div>
+            {/* Distance & Cost */}
+            <div className="mb-2">...</div>
+            {/* Buttons */}
+            <div className="row">...</div>
+          </form>
+        </div>
+      </div>
+
+      {/* Table Card */}
+      <div className="card ...">
+        <div className="card-body ...">
+          <div className="d-flex ...">...</div>
+          <div className="table-responsive">
+            <table className="table ...">
+              <thead>...</thead>
+              <tbody>
+                {filteredEntries.map((entry) => (
+                  <tr key={entry.srNo}>...</tr>
+                ))}
+                {filteredEntries.length === 0 && <tr>...</tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </>
+);
+```
+
+**Detailed Explanation:**
+- **ToastContainer**: Global for toasts.
+- **Nav**: Imported navigation.
+- **Form**: Structured in sections (period, employee, travel, cost). Uses Bootstrap rows/cols. Inputs bound to formData, onChange=handleChange. Dropdowns as tables with search.
+- **Table**: Responsive, with search/export. Maps filteredEntries, clickable locations, map/delete buttons. Empty state message.
+- **Purpose**: Renders UI. Conditional rendering (e.g., loading, errors, dropdowns).
+
+---
+
+### Final Notes
+- **Overall Flow**: Component mounts -> Fetches locations/employee -> Auto-sets dates/IssueId -> User fills form -> Validates -> Submits to backend -> Updates table.
+- **Dependencies**: Backend at localhost:1234 (assumed to handle PetrolHead/Details).
+- **Improvements**: Delete API might need per-entry ID. Add edit entry. Use secure API (HTTPS in prod).
+If you need more details or modifications, let me know!
