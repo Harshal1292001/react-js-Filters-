@@ -1,0 +1,160 @@
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+
+const StudentManager = () => {
+  // State for storing students list
+  const [students, setStudents] = useState([]);
+  // State for form inputs (create and update)
+  const [formData, setFormData] = useState({
+    rollno: '',
+    name: '',
+    age: '',
+    address: '',
+    city: '',
+    state: ''
+  });
+  // State for updating a student (to track which student is being edited)
+  const [editingRollno, setEditingRollno] = useState(null);
+
+  // Base URL for the API
+  const API_URL = 'https://localhost:1234/api/student';
+
+  // Fetch all students (GET)
+  const fetchStudents = async () => {
+    try {
+      const response = await axios.get(API_URL);
+      setStudents(response.data);
+    } catch (error) {
+      console.error('Error fetching students:', error);
+    }
+  };
+
+  // Load students when component mounts
+  useEffect(() => {
+    fetchStudents();
+  }, []);
+
+  // Handle form input changes
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+  };
+
+  // Create a new student (POST)
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(API_URL, formData);
+      fetchStudents(); // Refresh the list
+      setFormData({ rollno: '', name: '', age: '', address: '', city: '', state: '' }); // Reset form
+    } catch (error) {
+      console.error('Error creating student:', error);
+    }
+  };
+
+  // Update a student (PUT)
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.put(`${API_URL}/${editingRollno}`, formData);
+      fetchStudents(); // Refresh the list
+      setFormData({ rollno: '', name: '', age: '', address: '', city: '', state: '' }); // Reset form
+      setEditingRollno(null); // Exit edit mode
+    } catch (error) {
+      console.error('Error updating student:', error);
+    }
+  };
+
+  // Delete a student (DELETE)
+  const handleDelete = async (rollno) => {
+    try {
+      await axios.delete(`${API_URL}/${rollno}`);
+      fetchStudents(); // Refresh the list
+    } catch (error) {
+      console.error('Error deleting student:', error);
+    }
+  };
+
+  // Populate form for editing
+  const handleEdit = (student) => {
+    setFormData(student);
+    setEditingRollno(student.rollno);
+  };
+
+  return (
+    <div>
+      <h2>Student Management</h2>
+
+      {/* Form for Create/Update */}
+      <form onSubmit={editingRollno ? handleUpdate : handleCreate}>
+        <input
+          type="text"
+          name="rollno"
+          value={formData.rollno}
+          onChange={handleInputChange}
+          placeholder="Roll No"
+          disabled={editingRollno} // Disable rollno field during update
+          required
+        />
+        <input
+          type="text"
+          name="name"
+          value={formData.name}
+          onChange={handleInputChange}
+          placeholder="Name"
+          required
+        />
+        <input
+          type="number"
+          name="age"
+          value={formData.age}
+          onChange={handleInputChange}
+          placeholder="Age用心
+          min="0"
+          max="120"
+        />
+        <input
+          type="text"
+          name="address"
+          value={formData.address}
+          onChange={handleInputChange}
+          placeholder="Address"
+        />
+        <input
+          type="text"
+          name="city"
+          value={formData.city}
+          onChange={handleInputChange}
+          placeholder="City"
+        />
+        <input
+          type="text"
+          name="state"
+          value={formData.state}
+          onChange={handleInputChange}
+          placeholder="State"
+        />
+        <button type="submit">{editingRollno ? 'Update Student' : 'Add Student'}</button>
+        {editingRollno && (
+          <button type="button" onClick={() => setEditingRollno(null)}>
+            Cancel
+          </button>
+        )}
+      </form>
+
+      {/* Student List */}
+      <h3>Students</h3>
+      <ul>
+        {students.map((student) => (
+          <li key={student.rollno}>
+            {student.name} (Roll No: {student.rollno}, Age: {student.age}, {student.city}, {student.state})
+            <button onClick={() => handleEdit(student)}>Edit</button>
+            <button onClick={() => handleDelete(student.rollno)}>Delete</button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
+export default StudentManager;
