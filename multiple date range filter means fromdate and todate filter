@@ -1,0 +1,114 @@
+// Add / update these state declarations
+const [fromDate, setFromDate] = useState('');    // yyyy-mm-dd
+const [toDate, setToDate] = useState('');
+
+// ────────────────────────────────────────────────
+// Inside the filters row (inside .row.g-4)
+<div className="row g-4">
+  {/* Existing Project select */}
+  <div className="col-lg-4 col-md-6">...</div>
+
+  {/* Existing Status select */}
+  <div className="col-lg-4 col-md-6">...</div>
+
+  {/* Search – make it smaller to fit dates */}
+  <div className="col-lg-4 col-md-6">
+    <label className="form-label fw-bold text-gray-800">Search Records</label>
+    <input
+      type="text"
+      className="form-control rounded-pill"
+      placeholder="Search by any field..."
+      value={searchTerm}
+      onChange={e => setSearchTerm(e.target.value)}
+      disabled={!selectedProject}
+      style={{ height: '46px', borderColor: '#d1d5db' }}
+    />
+  </div>
+
+  {/* ── New: Date From ── */}
+  <div className="col-lg-3 col-md-6">
+    <label className="form-label fw-bold text-gray-800">From Date</label>
+    <input
+      type="date"
+      className="form-control rounded-pill"
+      value={fromDate}
+      onChange={e => setFromDate(e.target.value)}
+      disabled={!selectedProject}
+      style={{ height: '46px' }}
+    />
+  </div>
+
+  {/* ── New: Date To ── */}
+  <div className="col-lg-3 col-md-6">
+    <label className="form-label fw-bold text-gray-800">To Date</label>
+    <input
+      type="date"
+      className="form-control rounded-pill"
+      value={toDate}
+      onChange={e => setToDate(e.target.value)}
+      disabled={!selectedProject}
+      style={{ height: '46px' }}
+    />
+  </div>
+</div>
+
+// ────────────────────────────────────────────────
+// Update filteredQaData memo
+const filteredQaData = useMemo(() => {
+  let data = qaData;
+
+  // 1. Status filter
+  if (selectedMainId) {
+    data = data.filter(item => String(item.Main_status) === selectedMainId);
+  }
+
+  // 2. Text search
+  if (searchTerm.trim()) {
+    const term = searchTerm.toLowerCase();
+    data = data.filter(item =>
+      Object.values(item).some(val => String(val || '').toLowerCase().includes(term))
+    );
+  }
+
+  // 3. Date range filter – check ANY of the four date fields
+  if (fromDate || toDate) {
+    const from = fromDate ? new Date(fromDate) : null;
+    const to   = toDate   ? new Date(toDate)   : null;
+
+    // Make "to" inclusive (end of day)
+    if (to) {
+      to.setHours(23, 59, 59, 999);
+    }
+
+    data = data.filter(item => {
+      const datesToCheck = [
+        item.QC_Date,
+        item.Approve_Status_Date,
+        item.Check_Status_Date,
+        item.System_Date,           // ← change name if your field is different (e.g. CreatedAt, EntryDate)
+      ];
+
+      // At least one date must be in range
+      return datesToCheck.some(dateStr => {
+        if (!dateStr) return false;
+
+        // Try parsing – accept different formats your backend might send
+        const d = new Date(dateStr);
+
+        if (isNaN(d.getTime())) return false;
+
+        if (from && d < from) return false;
+        if (to   && d > to)   return false;
+
+        return true;
+      });
+    });
+  }
+
+  return data;
+}, [qaData, selectedMainId, searchTerm, fromDate, toDate]);
+
+// Optional: reset page when important filters change
+useEffect(() => {
+  setCurrentPage(1);
+}, [selectedProject, selectedMainId, fromDate, toDate, searchTerm]);
