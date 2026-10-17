@@ -1,0 +1,113 @@
+1. Add pagination to your React table
+Step 1: Import useState
+import { useState } from "react";
+
+
+Step 2: Create pagination state
+Add these inside your component:
+const [currentPage, setCurrentPage] = useState(1);
+const [itemsPerPage, setItemsPerPage] = useState(5);
+
+
+Step 3: Apply pagination to filtered data
+Use your existing filterCategoryData array:
+const totalPages = Math.ceil(
+    filterCategoryData.length / itemsPerPage
+);
+
+const startIndex = (currentPage - 1) * itemsPerPage;
+
+const currentData = filterCategoryData.slice(
+    startIndex,
+    startIndex + itemsPerPage
+);
+
+
+Step 4: Display currentData in your table
+Instead of mapping over filterCategoryData, map over currentData.
+<tbody>
+    {currentData.map((item, index) => (
+        <tr key={item.id ?? startIndex + index}>
+            <td>{startIndex + index + 1}</td>
+            <td>{item.category}</td>
+            <td>{item.checkListCategory}</td>
+        </tr>
+    ))}
+</tbody>
+
+
+Adjust the column names to match your actual table.
+2. Add Previous, Next, and page buttons
+Place this code below your table:
+
+<div className="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+
+    <div className="d-flex align-items-center gap-2">
+        <label>Rows per page:</label>
+
+        <select
+            className="form-select"
+            style={{ width: "auto" }}
+            value={itemsPerPage}
+            onChange={(e) => {
+                setItemsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+            }}
+        >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+        </select>
+    </div>
+
+    <div className="d-flex align-items-center gap-2">
+        <button
+            className="btn btn-outline-primary"
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage((prev) => prev - 1)}
+        >
+            Previous
+        </button>
+
+        <span>
+            Page {currentPage} of {Math.max(1, totalPages)}
+        </span>
+
+        <button
+            className="btn btn-outline-primary"
+            disabled={currentPage >= totalPages || totalPages === 0}
+            onClick={() => setCurrentPage((prev) => prev + 1)}
+        >
+            Next
+        </button>
+    </div>
+
+</div>
+
+
+
+3. How pagination works
+For example, suppose your filtered table contains 23 records and you select 5 rows per page.
+Total records
+23
+
+Rows per page
+5
+
+Total pages
+5
+
+
+
+Example pagination
+Showing records 1–5 of 23
+12345
+
+4. Important when using search
+Because you are using searchCategory and searchCheckList, reset the page to 1 when the search changes. Otherwise, the user might be on page 4, search for something that only has one page of results, and see an empty table.
+For example:
+onChange={(e) => {
+    setSearchCategory(e.target.value);
+    setCurrentPage(1);
+}}
